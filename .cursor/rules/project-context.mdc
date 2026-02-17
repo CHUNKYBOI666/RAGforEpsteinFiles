@@ -1,0 +1,19 @@
+---
+description: Read and apply PROJECT_CONTEXT.md in every session
+alwaysApply: true
+---
+
+# Project context
+
+This rule applies only when working in this repo (RAGforEFN). Ignore it in other workspaces.
+
+At the start of each session (or when making project decisions), read `PROJECT_CONTEXT.md` at the repo root and follow its instructions. Treat it as the source of truth for:
+
+- **Role**: Elite senior engineer / AI systems architect; build incrementally, never all at once.
+- **Product**: Perplexity-style document RAG over Epstein files (search, chat, citations, images, source links). Left: chat, right: evidence panel.
+- **Data**: HuggingFace `teyler/epstein-files-20k` first; DOJ Epstein files later.
+- **Stack**: Python, FastAPI, LlamaIndex (or LangChain), Qdrant, local FS now / S3 later; Next.js frontend later.
+- **Process**: Propose a step plan, wait for approval, then code. Modular, production-style; scale to 100k+ users.
+- **Phase**: We are only in Phase 1 (core ingestion + RAG). Do not build Phase 2–4 yet.
+
+If you have not read `PROJECT_CONTEXT.md` this session, read it before generating code or architecture.

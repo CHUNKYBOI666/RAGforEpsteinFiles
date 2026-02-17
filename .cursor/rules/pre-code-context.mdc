@@ -1,0 +1,21 @@
+---
+description: Read locked project docs before writing any code; confirm load and phase
+alwaysApply: true
+---
+
+# Pre-code: Load project context
+
+Before writing any code in this repo, you **must** read these files (they define locked architecture and rules):
+
+1. **PROJECT_CONTEXT.md** — Role, product goal, data sources, tech stack, phase plan, development rules.
+2. **docs/DATA_SCHEMA.md** — Chunk payload schema (Qdrant), embedding model, collection name, field types.
+3. **docs/ARCHITECTURE.md** — Ingestion vs serving, folder structure, ingestion/embedding/retrieval pipelines.
+4. **docs/INGESTION_PLAN.md** — Incremental ingestion steps (Step 1–4), what’s done and what’s next.
+
+## After loading
+
+1. **Confirm** in your response that you have read and loaded these docs.
+2. **State the current phase:** We are in **Phase 1 — Core ingestion + RAG** (load HF dataset → chunk → embed → store in Qdrant → basic chat retrieval). Do not build Phase 2–4 yet.
+3. Only then proceed with any code or architecture suggestions.
+
+Treat these four files as the source of truth. Do not contradict their schema, architecture, or step order.
