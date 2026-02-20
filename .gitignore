@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 
+.cursor/plans/
 docs/
 plans/
 README.md
