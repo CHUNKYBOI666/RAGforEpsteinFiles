@@ -12,3 +12,20 @@ HF_DATASET_NAME: str = os.getenv("HF_DATASET_NAME", "teyler/epstein-files-20k")
 # Paths (optional)
 DATA_DIR: Path = Path(os.getenv("DATA_DIR", "./data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Embedding (BGE)
+EMBED_MODEL_NAME: str = os.getenv("EMBED_MODEL_NAME", "bge-base-en-v1.5")
+EMBED_DOCUMENT_PREFIX: str = os.getenv(
+    "EMBED_DOCUMENT_PREFIX",
+    "Represent this document for retrieval: ",
+)
+EMBED_QUERY_PREFIX: str = os.getenv(
+    "EMBED_QUERY_PREFIX",
+    "Represent this question for retrieving relevant documents: ",
+)
+EMBED_BATCH_SIZE: int = int(os.getenv("EMBED_BATCH_SIZE", "64"))
+EMBED_DEVICE: str | None = os.getenv("EMBED_DEVICE")  # None = auto (cuda/mps/cpu)
+
+# Qdrant (local persistent only; no in-memory)
+QDRANT_PATH: Path = Path(os.getenv("QDRANT_PATH", "./data/qdrant"))
+QDRANT_COLLECTION: str = os.getenv("QDRANT_COLLECTION", "epstein_files")

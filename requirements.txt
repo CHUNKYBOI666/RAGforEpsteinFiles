@@ -2,3 +2,5 @@ datasets>=2.14.0
 python-dotenv>=1.0.0
 transformers>=4.30.0
 tokenizers>=0.13.0
+sentence-transformers>=2.2.0
+qdrant-client>=1.7.0
