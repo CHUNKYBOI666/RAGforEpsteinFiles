@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert } from 'lucide-react';
+import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText } from 'lucide-react';
 import { CrypticBackground } from './components/CrypticBackground';
 import { EvidenceCard } from './components/EvidenceCard';
 import { api } from './api';
