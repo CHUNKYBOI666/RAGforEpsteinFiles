@@ -43,13 +43,15 @@ def build_citations(
         snippet = text
         if snippet_max_chars > 0 and len(snippet) > snippet_max_chars:
             snippet = snippet[:snippet_max_chars] + "..."
+        doc_date = payload.get("doc_date")
         citations.append({
             "doc_id": payload.get("doc_id", ""),
             "chunk_id": payload.get("chunk_id", ""),
             "page": payload.get("page"),
             "source_ref": payload.get("source_ref") or "",
             "doc_title": payload.get("doc_title") or "",
-            "doc_date": payload.get("doc_date"),
+            "doc_date": doc_date,
+            "date": str(doc_date) if doc_date is not None else "",
             "doc_type": payload.get("doc_type") or "",
             "snippet": snippet,
             "score": h.get("score"),

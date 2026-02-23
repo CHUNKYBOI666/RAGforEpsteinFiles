@@ -5,6 +5,7 @@ Retrieval logic lives in src.retrieval; this module only wires HTTP to retrieval
 import logging
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.retrieval import format_retrieval_result, search
@@ -12,6 +13,13 @@ from src.retrieval import format_retrieval_result, search
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAGforEFN API", description="Search and chat over document index")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # --- Request/response models ---
@@ -25,6 +33,8 @@ class SearchRequest(BaseModel):
 class SearchResponse(BaseModel):
     hits: list[dict]
     citations: list[dict]
+    results: list[dict]
+    total_found: int
 
 
 class ChatRequest(BaseModel):
@@ -46,7 +56,13 @@ def post_search(body: SearchRequest) -> SearchResponse:
     try:
         hits = search(body.query, top_k=body.top_k)
         result = format_retrieval_result(hits)
-        return SearchResponse(hits=hits, citations=result["citations"])
+        citations = result["citations"]
+        return SearchResponse(
+            hits=hits,
+            citations=citations,
+            results=citations,
+            total_found=len(hits),
+        )
     except Exception as e:
         logger.exception("Search failed")
         raise HTTPException(status_code=503, detail="Search temporarily unavailable") from e

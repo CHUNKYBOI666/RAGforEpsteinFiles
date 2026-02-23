@@ -26,12 +26,13 @@ def test_search_valid_returns_200_and_structure():
         pytest.skip("Index or retrieval unavailable (run ingestion --index-test)")
     assert r.status_code == 200
     data = r.json()
-    assert "hits" in data and "citations" in data
-    assert isinstance(data["hits"], list) and isinstance(data["citations"], list)
+    assert "hits" in data and "citations" in data and "results" in data and "total_found" in data
+    assert isinstance(data["hits"], list) and isinstance(data["citations"], list) and isinstance(data["results"], list)
+    assert data["total_found"] == len(data["hits"]) and data["results"] == data["citations"]
     assert len(data["hits"]) <= 3
     if data["hits"]:
         assert "score" in data["hits"][0] and "payload" in data["hits"][0]
-        assert "doc_id" in data["citations"][0] and "snippet" in data["citations"][0]
+        assert "doc_id" in data["citations"][0] and "snippet" in data["citations"][0] and "date" in data["citations"][0]
 
 
 def test_chat_empty_query_returns_422():
