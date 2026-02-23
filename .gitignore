@@ -1,12 +1,17 @@
 .env
-data/
-__pycache__/
-*.pyc
-.venv/
-venv/
+*.zip
+.DS_Store
 
-.cursor/plans/
-docs/
+# Backend
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/**/*.pyc
+backend/data/
 
-# Markdown (project uses PROJECT_CONTEXT.md, docs/, README in repo; ignore other .md)
-*.md
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Cursor (optional: uncomment if you want to ignore backend rules at root)
+# backend/.cursor/
