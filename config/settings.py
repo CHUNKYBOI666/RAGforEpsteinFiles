@@ -29,3 +29,9 @@ EMBED_DEVICE: str | None = os.getenv("EMBED_DEVICE")  # None = auto (cuda/mps/cp
 # Qdrant (local persistent only; no in-memory)
 QDRANT_PATH: Path = Path(os.getenv("QDRANT_PATH", "./data/qdrant"))
 QDRANT_COLLECTION: str = os.getenv("QDRANT_COLLECTION", "epstein_files")
+
+# LLM (for /chat)
+LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")  # "openai" or "local"
+LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
+OPENAI_API_BASE: str | None = os.getenv("OPENAI_API_BASE")  # for local OpenAI-compatible server
