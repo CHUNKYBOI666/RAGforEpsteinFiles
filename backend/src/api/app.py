@@ -33,6 +33,9 @@ app.add_middleware(
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Search query")
     top_k: int = Field(10, ge=1, le=100, description="Max number of hits")
+    date_from: str | None = Field(None, description="Filter: doc_date >= this (ISO date string)")
+    date_to: str | None = Field(None, description="Filter: doc_date <= this (ISO date string)")
+    doc_type: str | None = Field(None, description="Filter by doc_type (e.g. email, court_filing, biography)")
 
 
 class SearchResponse(BaseModel):
@@ -45,6 +48,9 @@ class SearchResponse(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1, description="User question")
     top_k: int = Field(10, ge=1, le=100, description="Max chunks for context")
+    date_from: str | None = Field(None, description="Filter: doc_date >= this (ISO date string)")
+    date_to: str | None = Field(None, description="Filter: doc_date <= this (ISO date string)")
+    doc_type: str | None = Field(None, description="Filter by doc_type (e.g. email, court_filing, biography)")
 
 
 class ChatResponse(BaseModel):
@@ -59,7 +65,13 @@ class ChatResponse(BaseModel):
 def post_search(body: SearchRequest) -> SearchResponse:
     """Retrieve top-k chunks for a query; return hits and citations. No LLM."""
     try:
-        hits = search(body.query, top_k=body.top_k)
+        hits = search(
+            body.query,
+            top_k=body.top_k,
+            date_from=body.date_from,
+            date_to=body.date_to,
+            doc_type=body.doc_type or None,
+        )
         result = format_retrieval_result(hits)
         citations = result["citations"]
         return SearchResponse(
@@ -79,7 +91,13 @@ def post_chat(body: ChatRequest) -> ChatResponse:
     from config import settings
 
     try:
-        hits = search(body.query, top_k=body.top_k)
+        hits = search(
+            body.query,
+            top_k=body.top_k,
+            date_from=body.date_from,
+            date_to=body.date_to,
+            doc_type=body.doc_type or None,
+        )
         result = format_retrieval_result(hits)
         context = result["context_for_llm"]
         citations = result["citations"]
@@ -108,7 +126,10 @@ def post_chat(body: ChatRequest) -> ChatResponse:
         answer = (response.choices[0].message.content or "").strip()
     except Exception as e:
         logger.exception("LLM call failed")
-        raise HTTPException(status_code=502, detail="LLM request failed") from e
+        return ChatResponse(
+            answer="[Unable to generate an answer; see sources below.]",
+            citations=citations,
+        )
 
     return ChatResponse(answer=answer, citations=citations)
 

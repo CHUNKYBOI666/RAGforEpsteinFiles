@@ -6,12 +6,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# HF dataset
+# HF dataset (optional; use --source hf to load)
 HF_DATASET_NAME: str = os.getenv("HF_DATASET_NAME", "teyler/epstein-files-20k")
 
 # Paths (optional)
 DATA_DIR: Path = Path(os.getenv("DATA_DIR", "./data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Doc-explorer + biography (default sources)
+DOC_EXPLORER_DB_PATH: Path = Path(
+    os.getenv("DOC_EXPLORER_DB_PATH", str(DATA_DIR / "epstein-doc-explorer" / "document_analysis.db"))
+)
+BIOGRAPHY_DIR: Path = Path(
+    os.getenv("BIOGRAPHY_DIR", str(DATA_DIR / "epstein-biography" / "epstein-biography"))
+)
 
 # Embedding (BGE)
 EMBED_MODEL_NAME: str = os.getenv("EMBED_MODEL_NAME", "bge-base-en-v1.5")

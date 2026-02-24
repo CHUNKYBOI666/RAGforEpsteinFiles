@@ -103,6 +103,7 @@ def upsert_chunks(
     embedded_chunks: Iterable[dict[str, Any]],
     embedding_model: str | None = None,
     batch_size: int = 64,
+    show_progress: bool = False,
 ) -> int:
     """
     Upsert embedded chunks into Qdrant. Point id = chunk_id. Payload includes embedding_model.
@@ -133,8 +134,12 @@ def upsert_chunks(
         if len(batch) >= batch_size:
             client.upsert(collection_name=collection_name, points=batch)
             total += len(batch)
+            if show_progress:
+                print(f"  upserted {total} points to {collection_name!r} ...", flush=True)
             batch = []
     if batch:
         client.upsert(collection_name=collection_name, points=batch)
         total += len(batch)
+        if show_progress:
+            print(f"  upserted {total} points (done).", flush=True)
     return total

@@ -42,11 +42,13 @@ def embed_chunks(
     chunks: Iterable[dict[str, Any]],
     batch_size: int | None = None,
     device: str | None = None,
+    show_progress: bool = False,
 ) -> Iterator[dict[str, Any]]:
     """
     Embed chunk texts in batches; yield same chunk dicts with "embedding" key.
 
     Uses EMBED_DOCUMENT_PREFIX from config. Batch size from config if not passed.
+    If show_progress=True, prints progress every 10 batches (requires consuming iterator).
     """
     from config import settings
 
@@ -58,6 +60,7 @@ def embed_chunks(
 
     batch: list[dict[str, Any]] = []
     texts: list[str] = []
+    total_yielded = 0
 
     for ch in chunks:
         text = (ch.get("text") or "").strip()
@@ -69,6 +72,9 @@ def embed_chunks(
             for i, vec in enumerate(vectors):
                 out = {**batch[i], "embedding": vec.tolist()}
                 yield out
+                total_yielded += 1
+                if show_progress and total_yielded % (10 * size) == 0:
+                    print(f"  embedded {total_yielded} chunks ...", flush=True)
             batch = []
             texts = []
 
@@ -77,6 +83,9 @@ def embed_chunks(
         for i, vec in enumerate(vectors):
             out = {**batch[i], "embedding": vec.tolist()}
             yield out
+            total_yielded += 1
+        if show_progress and total_yielded > 0:
+            print(f"  embedded {total_yielded} chunks (done).", flush=True)
 
 
 def embed_query(query: str) -> list[float]:

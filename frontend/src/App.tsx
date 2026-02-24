@@ -174,8 +174,8 @@ export default function App() {
               className="flex-1 flex overflow-hidden"
             >
               {/* Left Column: Synthesis / Thread */}
-              <div className="flex-1 flex flex-col border-r border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md relative">
-                <div className="flex-1 overflow-y-auto p-6 md:p-10 scrollbar-hide">
+              <div className="flex-1 min-w-0 flex flex-col border-r border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md relative">
+                <div className="flex-1 min-h-0 overflow-y-auto p-6 md:p-10 scrollbar-hide">
                   <div className="max-w-3xl mx-auto">
                     <div className="mb-10">
                       <h3 className="text-2xl font-serif text-zinc-100 mb-2">{activeQuery}</h3>
@@ -195,7 +195,10 @@ export default function App() {
                       >
                         {mode === 'chat' ? (
                           <div className="text-lg leading-relaxed text-zinc-300">
-                            {renderAnswerWithCitations(answer)}
+                            {answer
+                              ? renderAnswerWithCitations(answer)
+                              : <span className="text-zinc-500 italic">No answer was generated. See the source evidence below.</span>
+                            }
                           </div>
                         ) : (
                           <div className="text-zinc-400 font-mono text-sm">
@@ -253,7 +256,7 @@ export default function App() {
                   ) : evidence.length > 0 ? (
                     evidence.map((item, idx) => (
                       <motion.div
-                        key={item.doc_id}
+                        key={`ev-${idx}`}
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: idx * 0.1 }}

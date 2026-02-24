@@ -1,13 +1,16 @@
 """
-Step 1: Run HF loader only. No chunking, embedding, or Qdrant.
-Step 2 test: --chunk-test runs loader (20 docs) -> chunk_documents -> print samples.
+Step 1: Run loader only. No chunking, embedding, or Qdrant.
+Step 2 test: --chunk-test runs loader -> chunk_documents -> print samples.
 Step 3A test: --embed-test runs loader -> chunk -> embed first 10 chunks (no Qdrant).
 Step 3B test: --index-test runs load -> chunk -> embed -> index -> one semantic search.
+
+Sources: --source hf | doc_explorer | biography | both (default: hf until E1).
 """
 import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Iterator
 
 # Project root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -18,14 +21,37 @@ from config import settings
 from src.ingestion.chunking import chunk_documents
 from src.ingestion.embedding import embed_chunks, embed_query
 from src.ingestion.indexer import ensure_collection, upsert_chunks
-from src.ingestion.loaders import load_hf_documents
+from src.ingestion.loaders import (
+    load_hf_documents,
+    load_doc_explorer_documents,
+)
 
 
-def run_loader_only(max_docs: int = 10) -> None:
+def _load_documents(source: str, max_docs: int | None) -> Iterator[dict]:
+    """Yield documents from the given source. Used by all run_* functions."""
+    if source == "hf":
+        yield from load_hf_documents(max_docs=max_docs)
+    elif source == "doc_explorer":
+        yield from load_doc_explorer_documents(settings.DOC_EXPLORER_DB_PATH, max_docs=max_docs)
+    elif source == "biography":
+        from src.ingestion.loaders import load_biography_documents
+        yield from load_biography_documents(settings.BIOGRAPHY_DIR, max_docs=max_docs)
+    elif source == "both":
+        from itertools import chain
+        from src.ingestion.loaders import load_biography_documents
+        yield from chain(
+            load_doc_explorer_documents(settings.DOC_EXPLORER_DB_PATH, max_docs=max_docs),
+            load_biography_documents(settings.BIOGRAPHY_DIR, max_docs=max_docs),
+        )
+    else:
+        raise ValueError(f"Unknown source: {source!r}")
+
+
+def run_loader_only(max_docs: int = 10, source: str = "hf") -> None:
     """Original Step 1 behavior: load and print doc summary."""
     count = 0
     first = None
-    for doc in load_hf_documents(max_docs=max_docs):
+    for doc in _load_documents(source, max_docs):
         count += 1
         if first is None:
             first = doc
@@ -36,14 +62,14 @@ def run_loader_only(max_docs: int = 10) -> None:
             print(f"  source_ref: {ref[:80]}..." if len(ref) > 80 else f"  source_ref: {ref}")
             print(f"  doc_type: {doc['doc_type']}, doc_title: {doc['doc_title'][:50]}...")
             print(f"  text length: {len(doc['text'])} chars")
-    print(f"\nTotal documents yielded: {count} (max_docs={max_docs})")
+    print(f"\nTotal documents yielded: {count} (max_docs={max_docs}, source={source})")
     if first:
         print("\nFirst doc keys:", list(first.keys()))
 
 
-def run_chunk_test(max_docs: int = 20) -> None:
+def run_chunk_test(max_docs: int = 20, source: str = "hf") -> None:
     """Step 2 test: load docs -> chunk -> print total count and sample chunks."""
-    docs = load_hf_documents(max_docs=max_docs)
+    docs = _load_documents(source, max_docs)
     chunks = chunk_documents(docs, chunk_size=700, overlap=100, min_doc_chars=50)
 
     total = 0
@@ -77,9 +103,9 @@ def run_chunk_test(max_docs: int = 20) -> None:
 # 9. Prints the results
 # 10. Prints the results
 # 11. Prints the results
-def run_embed_test(max_chunks: int = 10) -> None:
+def run_embed_test(max_chunks: int = 10, source: str = "hf") -> None:
     """Step 3A: load -> chunk -> embed first N chunks; print shape and sample (no Qdrant)."""
-    docs = load_hf_documents(max_docs=50)
+    docs = _load_documents(source, 50)
     chunks = chunk_documents(docs, chunk_size=700, overlap=100, min_doc_chars=50)
     # Consume until we have max_chunks
     chunk_list: list[dict] = []
@@ -110,18 +136,25 @@ def run_embed_test(max_chunks: int = 10) -> None:
 # 5. Upserts the chunks into the collection
 # 6. Searches the collection for the query
 # 7. Prints the results
-def run_index_test(max_docs: int = 50, query_text: str = "flight log", top_k: int = 3) -> None:
+def run_index_test(
+    max_docs: int = 50,
+    query_text: str = "flight log",
+    top_k: int = 3,
+    source: str = "hf",
+) -> None:
     """Step 3B: load -> chunk -> embed -> ensure collection -> upsert -> one semantic search, print hits."""
     settings.QDRANT_PATH.mkdir(parents=True, exist_ok=True)
     client = QdrantClient(path=str(settings.QDRANT_PATH))
     collection_name = settings.QDRANT_COLLECTION
 
-    docs = load_hf_documents(max_docs=max_docs)
+    docs = _load_documents(source, max_docs)
     chunks = chunk_documents(docs, chunk_size=700, overlap=100, min_doc_chars=50)
-    embedded = embed_chunks(chunks, batch_size=min(32, 64))
+    # show_progress so full runs print periodic status (embed + upsert are slow at scale)
+    embedded = embed_chunks(chunks, batch_size=min(32, 64), show_progress=True)
 
     ensure_collection(client, collection_name, vector_size=768)
-    count = upsert_chunks(client, collection_name, embedded)
+    print("Embedding + indexing (progress below)...", flush=True)
+    count = upsert_chunks(client, collection_name, embedded, show_progress=True)
     print(f"Upserted {count} chunks into {collection_name!r}.")
 
     query_vector = embed_query(query_text)
@@ -138,7 +171,7 @@ def run_index_test(max_docs: int = 50, query_text: str = "flight log", top_k: in
         text = (payload.get("text") or "")[:200]
         if len(payload.get("text") or "") > 200:
             text += "..."
-        print(f"  {i}. chunk_id={payload.get('chunk_id')} doc_id={payload.get('doc_id')} score={hit.score:.4f}")
+        print(f"  {i}. chunk_id={payload.get('chunk_id')} doc_id={payload.get('doc_id')} doc_type={payload.get('doc_type')} doc_date={payload.get('doc_date')} score={hit.score:.4f}")
         print(f"     {text}")
 
 
@@ -171,19 +204,36 @@ def main() -> None:
         default=None,
         help="Max docs to load (default: 10 for loader, 20 for --chunk-test)",
     )
+    parser.add_argument(
+        "--source",
+        type=str,
+        choices=("hf", "doc_explorer", "biography", "both"),
+        default="both",
+        help="Data source: both (default), doc_explorer, biography, or hf",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="No doc limit: load/index entire corpus (use with --index-test for full pipeline)",
+    )
     args = parser.parse_args()
 
+    max_docs = None if args.full else args.max_docs
+
     if args.index_test:
-        max_docs = args.max_docs if args.max_docs is not None else 50
-        run_index_test(max_docs=max_docs)
+        if max_docs is None and not args.full:
+            max_docs = 50
+        run_index_test(max_docs=max_docs, source=args.source)
     elif args.embed_test:
-        run_embed_test(max_chunks=10)
+        run_embed_test(max_chunks=10, source=args.source)
     elif args.chunk_test:
-        max_docs = args.max_docs if args.max_docs is not None else 20
-        run_chunk_test(max_docs=max_docs)
+        max_docs = max_docs if max_docs is not None else 20
+        run_chunk_test(max_docs=max_docs, source=args.source)
     else:
-        max_docs = args.max_docs if args.max_docs is not None else 10
-        run_loader_only(max_docs=max_docs)
+        # Loader only: default 10 for quick check; --source both with no limit → full corpus
+        if max_docs is None:
+            max_docs = 10 if args.source != "both" else None
+        run_loader_only(max_docs=max_docs, source=args.source)
 
 
 if __name__ == "__main__":
