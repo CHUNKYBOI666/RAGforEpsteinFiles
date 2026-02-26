@@ -1,6 +1,8 @@
 # Environment variables, model names, chunk sizes — env only, no hardcoded credentials.
 # Use: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,6 +10,14 @@ load_dotenv()
 # Supabase (only database per project.mdc)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+# SQLite source for Phase 1 migration (document_analysis.db). Prefer env, else backend/data/epstein-doc-explorer.
+_BACKEND_DIR = Path(__file__).resolve().parent
+SQLITE_DB_PATH = (
+    os.getenv("SQLITE_DB_PATH")
+    or os.getenv("DOC_EXPLORER_DB_PATH")
+    or str(_BACKEND_DIR / "data" / "document_analysis.db")
+)
 
 # Embeddings (OpenAI text-embedding-3-small)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")

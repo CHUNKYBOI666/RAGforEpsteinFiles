@@ -5,7 +5,8 @@ alwaysApply: true
 
 # Source of truth
 
-**Read `docs/BACKEND_PLAN.md`** when you start a session or when making architecture/design decisions. It contains the full plan (DB design, ingestion phases, 6-stage retrieval, API spec, build order). This rule summarizes constraints so every edit stays aligned.
+- **At session start:** Read **`docs/BACKEND_PLAN.md`** (full plan: DB design, ingestion, retrieval, API, build order) and **`docs/PROGRESS.md`** (current phase status). This rule summarizes constraints; the docs are the source of truth.
+- **When work advances:** Update **`docs/PROGRESS.md`** whenever a phase moves to "In progress" or "Complete", or when notes need to change. Keep it in sync with actual progress.
 
 ---
 
