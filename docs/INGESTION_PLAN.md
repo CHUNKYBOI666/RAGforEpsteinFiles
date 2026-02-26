@@ -8,7 +8,7 @@ Incremental steps. Do not build the entire pipeline at once.
 
 - **Doc-explorer:** Load `document_analysis.db` (Epstein-doc-explorer repo). Obtain DB: clone repo and download via Git LFS or from GitHub media URL. Yield doc_id, text, source_ref, doc_type (from category), doc_title, doc_date (from date_range_earliest/latest).
 - **Biography:** Load Markdown from epstein-biography repo (`BIOGRAPHY_DIR`); glob `**/*.md`; doc_type=biography.
-- **Default source:** both (doc-explorer then biography). Optional: `--source hf` for HuggingFace `teyler/epstein-files-20k`.
+- **Default source:** both (doc-explorer then biography). `--source doc_explorer | biography | both`.
 - **Code:** `src/ingestion/loaders.py`, `scripts/run_ingestion.py`, `config/settings.py` (DOC_EXPLORER_DB_PATH, BIOGRAPHY_DIR).
 
 ---
@@ -33,6 +33,16 @@ Incremental steps. Do not build the entire pipeline at once.
 
 - Run: load → chunk → embed → index in one script.
 - Optional: limit docs for testing (max_docs), then full run.
+
+---
+
+## Document cleaning (v3)
+
+- **When:** Between Load and Chunk when `ENABLE_DOCUMENT_CLEANING` is true (default).
+- **Design:** See [docs/cleaning.md](cleaning.md) for goals, philosophy, implementation (v3), doc-type presets, and versioning.
+- **What:** Doc-type-aware: financial_document = boilerplate-only; book_excerpt = OCR column-fragment join + full cleaning; default = line-join, strip line-edge punctuation, drop OCR/header/dedupe/short.
+- **Target:** 5–25% character removal for OCR-heavy docs; financial docs preserved; better embedding/retrieval quality.
+- **Re-ingestion:** After changing cleaning, re-run full ingestion (or per-source) to refresh Qdrant chunks. Chunk payload includes `cleaning_version` (e.g. `v3`) for tracking.
 
 ---
 

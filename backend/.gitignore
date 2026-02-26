@@ -8,5 +8,5 @@ venv/
 .cursor/plans/
 docs/
 
-# Markdown (project uses PROJECT_CONTEXT.md, docs/, README in repo; ignore other .md)
+# Markdown (project uses BACKEND_PLAN.md, README in repo; ignore other .md)
 *.md

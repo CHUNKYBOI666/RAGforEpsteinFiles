@@ -3,8 +3,9 @@ Step 1: Run loader only. No chunking, embedding, or Qdrant.
 Step 2 test: --chunk-test runs loader -> chunk_documents -> print samples.
 Step 3A test: --embed-test runs loader -> chunk -> embed first 10 chunks (no Qdrant).
 Step 3B test: --index-test runs load -> chunk -> embed -> index -> one semantic search.
+Use --index-test --clear for trustworthy evaluation (wipes collection before indexing).
 
-Sources: --source hf | doc_explorer | biography | both (default: hf until E1).
+Sources: --source doc_explorer | biography | both (default: both).
 """
 import argparse
 import json
@@ -21,17 +22,13 @@ from config import settings
 from src.ingestion.chunking import chunk_documents
 from src.ingestion.embedding import embed_chunks, embed_query
 from src.ingestion.indexer import ensure_collection, upsert_chunks
-from src.ingestion.loaders import (
-    load_hf_documents,
-    load_doc_explorer_documents,
-)
+from src.ingestion.cleaning import CLEANING_VERSION, clean_document
+from src.ingestion.loaders import load_doc_explorer_documents
 
 
 def _load_documents(source: str, max_docs: int | None) -> Iterator[dict]:
     """Yield documents from the given source. Used by all run_* functions."""
-    if source == "hf":
-        yield from load_hf_documents(max_docs=max_docs)
-    elif source == "doc_explorer":
+    if source == "doc_explorer":
         yield from load_doc_explorer_documents(settings.DOC_EXPLORER_DB_PATH, max_docs=max_docs)
     elif source == "biography":
         from src.ingestion.loaders import load_biography_documents
@@ -47,7 +44,21 @@ def _load_documents(source: str, max_docs: int | None) -> Iterator[dict]:
         raise ValueError(f"Unknown source: {source!r}")
 
 
-def run_loader_only(max_docs: int = 10, source: str = "hf") -> None:
+def _maybe_clean(docs: Iterator[dict]) -> Iterator[dict]:
+    """Wrap document iterator with cleaning when ENABLE_DOCUMENT_CLEANING is true."""
+    if settings.ENABLE_DOCUMENT_CLEANING:
+        for doc in docs:
+            yield clean_document(doc)
+    else:
+        yield from docs
+
+
+def _cleaning_version_arg() -> str | None:
+    """Return the cleaning version tag when cleaning is enabled, else None."""
+    return CLEANING_VERSION if settings.ENABLE_DOCUMENT_CLEANING else None
+
+
+def run_loader_only(max_docs: int = 10, source: str = "both") -> None:
     """Original Step 1 behavior: load and print doc summary."""
     count = 0
     first = None
@@ -67,10 +78,10 @@ def run_loader_only(max_docs: int = 10, source: str = "hf") -> None:
         print("\nFirst doc keys:", list(first.keys()))
 
 
-def run_chunk_test(max_docs: int = 20, source: str = "hf") -> None:
-    """Step 2 test: load docs -> chunk -> print total count and sample chunks."""
-    docs = _load_documents(source, max_docs)
-    chunks = chunk_documents(docs, chunk_size=700, overlap=100, min_doc_chars=50)
+def run_chunk_test(max_docs: int = 20, source: str = "both") -> None:
+    """Step 2 test: load docs -> clean -> chunk -> print total count and sample chunks."""
+    docs = _maybe_clean(_load_documents(source, max_docs))
+    chunks = chunk_documents(docs, chunk_size=400, overlap=50, min_doc_chars=50, cleaning_version=_cleaning_version_arg())
 
     total = 0
     sample: list[dict] = []
@@ -91,22 +102,10 @@ def run_chunk_test(max_docs: int = 20, source: str = "hf") -> None:
         print(json.dumps(display, indent=2, default=str))
         print()
 
-# This method does the following:
-# 1. Loads the documents
-# 2. Chunks the documents
-# 3. Embeds the chunks
-# 4. Prints the results
-# 5. Prints the shape and sample of the first chunk
-# 6. Prints the keys on the first chunk
-# 7. Prints the first 5 values of the embedding
-# 8. Prints the results
-# 9. Prints the results
-# 10. Prints the results
-# 11. Prints the results
-def run_embed_test(max_chunks: int = 10, source: str = "hf") -> None:
-    """Step 3A: load -> chunk -> embed first N chunks; print shape and sample (no Qdrant)."""
-    docs = _load_documents(source, 50)
-    chunks = chunk_documents(docs, chunk_size=700, overlap=100, min_doc_chars=50)
+def run_embed_test(max_chunks: int = 10, source: str = "both") -> None:
+    """Step 3A: load -> clean -> chunk -> embed first N chunks; print shape and sample (no Qdrant)."""
+    docs = _maybe_clean(_load_documents(source, 50))
+    chunks = chunk_documents(docs, chunk_size=400, overlap=50, min_doc_chars=50, cleaning_version=_cleaning_version_arg())
     # Consume until we have max_chunks
     chunk_list: list[dict] = []
     for ch in chunks:
@@ -128,27 +127,33 @@ def run_embed_test(max_chunks: int = 10, source: str = "hf") -> None:
         print("Keys on embedded chunk:", list(first.keys()))
 
 
-# This method in detail does the following:
-# 1. Loads the documents
-# 2. Chunks the documents
-# 3. Embeds the chunks
-# 4. Ensures the collection exists
-# 5. Upserts the chunks into the collection
-# 6. Searches the collection for the query
-# 7. Prints the results
 def run_index_test(
     max_docs: int = 50,
     query_text: str = "flight log",
     top_k: int = 3,
-    source: str = "hf",
+    source: str = "both",
+    clear_first: bool = False,
 ) -> None:
     """Step 3B: load -> chunk -> embed -> ensure collection -> upsert -> one semantic search, print hits."""
     settings.QDRANT_PATH.mkdir(parents=True, exist_ok=True)
     client = QdrantClient(path=str(settings.QDRANT_PATH))
     collection_name = settings.QDRANT_COLLECTION
 
-    docs = _load_documents(source, max_docs)
-    chunks = chunk_documents(docs, chunk_size=700, overlap=100, min_doc_chars=50)
+    if clear_first and client.collection_exists(collection_name):
+        client.delete_collection(collection_name)
+        print(f"Cleared collection {collection_name!r}.", flush=True)
+
+    docs = _maybe_clean(_load_documents(source, max_docs))
+    alnum_dropped: list[int] = [0]
+    chunks = chunk_documents(
+        docs,
+        chunk_size=400,
+        overlap=50,
+        min_doc_chars=50,
+        cleaning_version=_cleaning_version_arg(),
+        min_alnum_ratio=0.5,
+        alnum_dropped=alnum_dropped,
+    )
     # show_progress so full runs print periodic status (embed + upsert are slow at scale)
     embedded = embed_chunks(chunks, batch_size=min(32, 64), show_progress=True)
 
@@ -156,6 +161,8 @@ def run_index_test(
     print("Embedding + indexing (progress below)...", flush=True)
     count = upsert_chunks(client, collection_name, embedded, show_progress=True)
     print(f"Upserted {count} chunks into {collection_name!r}.")
+    if alnum_dropped[0] > 0:
+        print(f"Dropped {alnum_dropped[0]} chunks (alnum < 50%).", flush=True)
 
     query_vector = embed_query(query_text)
     response = client.query_points(
@@ -175,12 +182,6 @@ def run_index_test(
         print(f"     {text}")
 
 
-# THe logic intuitively for main is:
-# 1. Parses the arguments from the command line
-# 2. If the arguments are --index-test, it runs the index test
-# 3. If the arguments are --embed-test, it runs the embed test
-# 4. If the arguments are --chunk-test, it runs the chunk test
-# 5. If the arguments are none of the above, it runs the loader only test
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run ingestion: loader only or chunk test")
     parser.add_argument(
@@ -207,14 +208,19 @@ def main() -> None:
     parser.add_argument(
         "--source",
         type=str,
-        choices=("hf", "doc_explorer", "biography", "both"),
+        choices=("doc_explorer", "biography", "both"),
         default="both",
-        help="Data source: both (default), doc_explorer, biography, or hf",
+        help="Data source: both (default), doc_explorer, or biography",
     )
     parser.add_argument(
         "--full",
         action="store_true",
         help="No doc limit: load/index entire corpus (use with --index-test for full pipeline)",
+    )
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Wipe the Qdrant collection before indexing so re-runs are from a clean state (use with --index-test)",
     )
     args = parser.parse_args()
 
@@ -223,7 +229,7 @@ def main() -> None:
     if args.index_test:
         if max_docs is None and not args.full:
             max_docs = 50
-        run_index_test(max_docs=max_docs, source=args.source)
+        run_index_test(max_docs=max_docs, source=args.source, clear_first=args.clear)
     elif args.embed_test:
         run_embed_test(max_chunks=10, source=args.source)
     elif args.chunk_test:

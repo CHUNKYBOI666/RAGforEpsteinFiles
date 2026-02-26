@@ -3,6 +3,6 @@
 Monorepo layout:
 
 - **`frontend/`** — Vite/React UI (from Google AI Studio). Run: `cd frontend && npm install && npm run dev`
-- **`backend/`** — Python FastAPI + RAG (ingestion, Qdrant, API). See `backend/README.md`. Run from `backend/`: `pip install -r requirements.txt`, `python scripts/run_ingestion.py`, etc.
+- **`backend/`** — Python FastAPI + Supabase RAG (ingestion, retrieval, api). See `BACKEND_PLAN.md` and `backend/README.md`. Run from `backend/`: `pip install -r requirements.txt`, then run ingestion/API per plan.
 
 Root config (e.g. `.env`) can live at repo root or in `backend/` for API keys and in `frontend/` for frontend env.

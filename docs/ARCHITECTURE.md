@@ -7,15 +7,15 @@ INGESTION (offline / CLI)          SERVING (online)
 ┌────────────────────────┐        ┌──────────────┐  ┌─────────────────┐
 │ Doc-explorer DB +       │──► Chunk ──► Embed ──►│ Qdrant           │  │ FastAPI         │
 │ Biography Markdown      │        └───────┬──────┘  │ /search, /chat  │
-│ (optional: HF via flag) │                 │         └────────┬────────┘
-└────────────────────────┘                 ▼                  ▼
+└────────────────────────┘                 │         └────────┬────────┘
+                                            ▼                  ▼
                                     ┌───────────────┐  ┌─────────────────┐
                                     │ Vector Store  │◄─│ LLM (answer +   │
                                     │ (Qdrant)      │  │ citations)      │
                                     └───────────────┘  └─────────────────┘
 ```
 
-- **Ingestion**: one-way pipeline (doc-explorer + biography by default → chunk → embed → Qdrant). Run as script/CLI; `--source hf` for HuggingFace.
+- **Ingestion**: one-way pipeline (doc-explorer + biography → chunk → embed → Qdrant). Run as script/CLI; `--source doc_explorer | biography | both`.
 - **Serving**: FastAPI reads from Qdrant and calls LLM for answers; retrieval supports optional filters (date_from, date_to, doc_type).
 
 ---
@@ -30,6 +30,7 @@ RAGforEFN/
 ├── src/
 │   ├── ingestion/       # offline pipeline
 │   │   ├── loaders.py
+│   │   ├── cleaning.py
 │   │   ├── chunking.py
 │   │   ├── embedding.py
 │   │   └── indexer.py
@@ -50,10 +51,11 @@ RAGforEFN/
 
 ## Ingestion flow
 
-1. **Load** — Read doc-explorer SQLite (document_analysis.db) and/or biography Markdown (epstein-biography/*.md); optional HuggingFace. Normalize to (id, text, metadata) per document.
-2. **Chunk** — Split text into chunks; attach doc_id, chunk_index, page, source_ref, doc_date, doc_type, doc_title, entity_mentions (optional), ingested_at.
-3. **Embed** — Batch chunks through embedding model → one vector per chunk.
-4. **Index** — Upsert (chunk_id, vector, payload) into Qdrant; create collection if missing, payload indexes on filter fields.
+1. **Load** — Read doc-explorer SQLite (document_analysis.db) and/or biography Markdown (epstein-biography/*.md). Normalize to (id, text, metadata) per document.
+2. **Clean** (optional, when `ENABLE_DOCUMENT_CLEANING=true`) — Document cleaning v3, doc-type-aware. See [docs/cleaning.md](cleaning.md) for design; implementation in `src/ingestion/cleaning.py` (`CLEANING_VERSION`).
+3. **Chunk** — Split text into chunks; attach doc_id, chunk_index, page, source_ref, doc_date, doc_type, doc_title, entity_mentions (optional), ingested_at.
+4. **Embed** — Batch chunks through embedding model → one vector per chunk.
+5. **Index** — Upsert (chunk_id, vector, payload) into Qdrant; create collection if missing, payload indexes on filter fields.
 
 ---
 

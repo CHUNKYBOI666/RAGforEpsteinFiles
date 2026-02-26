@@ -1,0 +1,56 @@
+---
+description: Backend architecture and constraints; source of truth is BACKEND_PLAN.md at repo root
+alwaysApply: true
+---
+
+# Source of truth
+
+**Read `BACKEND_PLAN.md` at the repo root** when you start a session or when making architecture/design decisions. It contains the full plan (DB design, ingestion phases, 6-stage retrieval, API spec, build order). This rule summarizes constraints so every edit stays aligned.
+
+---
+
+# Stack (non-negotiable)
+
+- **Backend:** Python + FastAPI only.
+- **Database:** Supabase (PostgreSQL + pgvector) only. No SQLite in the codebase (no `sqlite3`, no `.db` reads, no SQLite-backed endpoints). No Qdrant, Pinecone, Chroma, Weaviate, FAISS.
+- **Config:** Environment variables only. No hardcoded credentials, URLs, or keys. Use `config.py` for env parsing.
+
+---
+
+# Backend folder structure (match the plan)
+
+```
+backend/
+├── ingestion/   — migrate_sqlite.py, chunk_documents.py, embed_chunks.py, create_indexes.py
+├── retrieval/  — query_expansion.py, summary_search.py, chunk_search.py, triple_lookup.py, context_builder.py
+├── api/        — main.py, chat.py, documents.py, search.py, stats.py
+├── config.py
+└── requirements.txt
+```
+
+Do not add parallel layouts (e.g. `src/`, `services/`) unless the plan changes.
+
+---
+
+# Retrieval (6 stages, every /api/chat)
+
+1. Query expansion (entity_aliases)
+2. Summary-level search (summary_embedding) → candidate doc_ids
+3. Chunk-level search (embedding, within candidates) → top chunks
+4. Triple lookup (rdf_triples for those doc_ids, filter by query terms)
+5. Context assembly (chunks + triples + system instruction)
+6. LLM generation (Claude) → answer + sources + triples
+
+Do not skip or reorder stages.
+
+---
+
+# API contract
+
+Every chat-style response MUST include:
+
+- **answer** (string)
+- **sources** (array)
+- **triples** (array)
+
+Use empty arrays when there are none; never omit these fields.

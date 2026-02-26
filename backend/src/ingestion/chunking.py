@@ -22,6 +22,22 @@ def _get_tokenizer():
     return _TOKENIZER
 
 
+def _non_alpha_ratio(text: str) -> float:
+    """Fraction of characters that are non-alphabetic (spaces, digits, symbols). 0 if empty."""
+    if not text:
+        return 0.0
+    non_alpha = sum(1 for c in text if not c.isalpha())
+    return non_alpha / len(text)
+
+
+def _alnum_ratio(text: str) -> float:
+    """Fraction of characters that are alphabetic or digits. 0 if empty."""
+    if not text:
+        return 0.0
+    alnum = sum(1 for c in text if c.isalnum())
+    return alnum / len(text)
+
+
 def _slice_tokens(tokenizer, text: str, chunk_size: int, overlap: int) -> Iterator[str]:
     """
     Split text into token windows of chunk_size with overlap.
@@ -45,18 +61,26 @@ def _slice_tokens(tokenizer, text: str, chunk_size: int, overlap: int) -> Iterat
 
 def chunk_documents(
     documents: Iterator[dict[str, Any]],
-    chunk_size: int = 700,
-    overlap: int = 100,
+    chunk_size: int = 400,
+    overlap: int = 50,
     min_doc_chars: int = 50,
+    cleaning_version: str | None = None,
+    min_alnum_ratio: float | None = 0.5,
+    alnum_dropped: list[int] | None = None,
 ) -> Iterator[dict[str, Any]]:
     """
     Consume loader output and yield chunk payloads matching DATA_SCHEMA.
 
     - Filters out docs with empty text or len(text.strip()) < min_doc_chars.
-    - Splits by tokens (BGE tokenizer) with sliding window overlap.
+    - Splits by tokens (BGE tokenizer) with sliding window overlap. Default 400 tokens
+      keeps chunks under BGE 512-token limit after document prefix at embed time.
+    - Chunks with alphanumeric ratio below min_alnum_ratio are dropped (None disables).
+    - When alnum_dropped is not None (e.g. [0]), increment it for each dropped chunk.
     - Each chunk has: doc_id, chunk_id, text, chunk_index, page, source_ref,
-      doc_date, doc_type, doc_title, image_refs, entity_mentions, ingested_at.
+      doc_date, doc_type, doc_title, image_refs, entity_mentions, ingested_at,
+      cleaned, cleaning_version.
 
+    cleaning_version: when not None, marks every chunk as cleaned with this version.
     documents: iterable of doc dicts (doc_id, text, source_ref, doc_type, doc_title, doc_date).
     Returns: generator of chunk payload dicts (no vectors).
     """
@@ -79,6 +103,10 @@ def chunk_documents(
         for chunk_index, chunk_text in enumerate(
             _slice_tokens(tokenizer, text_stripped, chunk_size, overlap)
         ):
+            if min_alnum_ratio is not None and _alnum_ratio(chunk_text) < min_alnum_ratio:
+                if alnum_dropped is not None:
+                    alnum_dropped[0] += 1
+                continue
             chunk_id = f"{doc_id}:{chunk_index}"
             yield {
                 "doc_id": doc_id,
@@ -93,4 +121,6 @@ def chunk_documents(
                 "image_refs": [],
                 "entity_mentions": [],
                 "ingested_at": ingested_at,
+                "cleaned": cleaning_version is not None,
+                "cleaning_version": cleaning_version or "",
             }
