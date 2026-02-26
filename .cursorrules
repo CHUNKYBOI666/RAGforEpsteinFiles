@@ -1,3 +1,3 @@
 # Project rules
 
-Rules and constraints live in `.cursor/rules/project.mdc` (always applied). Full architecture and build order are in `BACKEND_PLAN.md` at repo root — read that when implementing or changing backend design.
+Rules and constraints live in `.cursor/rules/project.mdc` (always applied). Full architecture and build order are in `docs/BACKEND_PLAN.md` — read that when implementing or changing backend design.

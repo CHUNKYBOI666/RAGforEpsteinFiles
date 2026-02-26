@@ -13,4 +13,4 @@ Defaults to `http://localhost:5173`. Set `VITE_API_URL` (e.g. in `.env.local`) i
 
 ## Stack
 
-React, Vite, Tailwind, Motion. Backend: FastAPI at `backend/`; see repo root `README.md` and `BACKEND_PLAN.md`.
+React, Vite, Tailwind, Motion. Backend: FastAPI at `backend/`; see repo root `README.md` and `docs/BACKEND_PLAN.md`.

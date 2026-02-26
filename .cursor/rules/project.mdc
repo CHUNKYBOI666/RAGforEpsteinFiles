@@ -1,11 +1,11 @@
 ---
-description: Backend architecture and constraints; source of truth is BACKEND_PLAN.md at repo root
+description: Backend architecture and constraints; source of truth is docs/BACKEND_PLAN.md
 alwaysApply: true
 ---
 
 # Source of truth
 
-**Read `BACKEND_PLAN.md` at the repo root** when you start a session or when making architecture/design decisions. It contains the full plan (DB design, ingestion phases, 6-stage retrieval, API spec, build order). This rule summarizes constraints so every edit stays aligned.
+**Read `docs/BACKEND_PLAN.md`** when you start a session or when making architecture/design decisions. It contains the full plan (DB design, ingestion phases, 6-stage retrieval, API spec, build order). This rule summarizes constraints so every edit stays aligned.
 
 ---
 
