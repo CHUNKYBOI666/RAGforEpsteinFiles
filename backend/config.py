@@ -10,6 +10,9 @@ load_dotenv()
 # Supabase (only database per project.mdc)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+# Direct Postgres connection string for admin/migration tasks (e.g. create_indexes.py).
+# Expected format: postgresql://USER:PASSWORD@HOST:PORT/DB
+SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL", "")
 
 # SQLite source for Phase 1 migration (document_analysis.db). Prefer env, else backend/data/epstein-doc-explorer.
 _BACKEND_DIR = Path(__file__).resolve().parent
