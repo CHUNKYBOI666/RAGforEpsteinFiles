@@ -6,16 +6,19 @@ interface EvidenceCardProps {
   evidence: Evidence;
   index: number;
   isActive?: boolean;
+  onClick?: (doc_id: string) => void;
 }
 
-export const EvidenceCard: React.FC<EvidenceCardProps> = ({ evidence, index, isActive }) => {
+export const EvidenceCard: React.FC<EvidenceCardProps> = ({ evidence, index, isActive, onClick }) => {
   return (
-    <div 
+    <div
+      role={onClick ? 'button' : undefined}
+      onClick={onClick ? () => onClick(evidence.doc_id) : undefined}
       className={`p-4 rounded-lg border transition-all duration-300 ${
-        isActive 
-          ? 'bg-zinc-800/80 border-zinc-600 shadow-lg shadow-black/50' 
+        isActive
+          ? 'bg-zinc-800/80 border-zinc-600 shadow-lg shadow-black/50'
           : 'bg-zinc-900/40 border-zinc-800/50 hover:bg-zinc-800/40'
-      }`}
+      } ${onClick ? 'cursor-pointer' : ''}`}
     >
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center space-x-2">

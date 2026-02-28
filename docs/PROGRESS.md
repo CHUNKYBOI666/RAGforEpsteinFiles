@@ -9,6 +9,6 @@ Tracks completion of phases from [BACKEND_PLAN.md](BACKEND_PLAN.md#build-order).
 | **Phase 3 — Retrieval Layer** | Complete | Query expansion (query_expansion.expand_query), summary search (summary_search.summary_search), chunk search (chunk_search.chunk_search), triple lookup (triple_lookup.triple_lookup), and context builder (context_builder.build_context_prompt) implemented |
 | **Phase 4 — LLM Integration** | Complete | context_builder returns system/user prompts; retrieval/llm_generation.py calls Claude; api/chat.run_chat_pipeline runs stages 1–6 and returns answer, sources, triples |
 | **Phase 5 — API Layer** | Complete | FastAPI app in api/main.py; GET /api/chat (enriched sources), /api/document/{doc_id}, /api/document/{doc_id}/text, /api/search, /api/stats, /api/tag-clusters. Run: `cd backend && python -m uvicorn api.main:app --host 0.0.0.0 --port 8000` |
-| **Phase 6 — Frontend Integration** | Not started | Chat input; wire /api/chat to DocumentModal and timeline |
+| **Phase 6 — Frontend Integration** | Complete | Frontend calls GET /api/chat?q= and GET /api/search?q=; sources mapped to EvidenceCard, triples shown in timeline; document modal on source card click (GET /api/document/{doc_id}/text). VITE_API_URL or default http://localhost:8000. |
 
 **Status values:** `Not started` | `In progress` | `Complete`
