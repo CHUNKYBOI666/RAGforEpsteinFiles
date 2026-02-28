@@ -1,0 +1,11 @@
+# Use LF for all text files so clones on Windows and Mac stay consistent.
+* text=auto eol=lf
+
+# Explicitly leave binary files untouched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.db binary
+*.sqlite binary

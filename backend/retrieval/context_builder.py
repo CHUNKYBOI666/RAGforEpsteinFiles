@@ -43,7 +43,9 @@ def build_context_prompt(
 
     Returns:
         Dict with:
-          - "prompt": str
+          - "prompt": str (full concatenation, for backward compatibility)
+          - "system_prompt": str (for Claude system message)
+          - "user_prompt": str (question + chunks + triples + "Answer:")
           - "doc_ids": List[str]
           - "chunk_count": int
           - "triple_count": int
@@ -98,25 +100,26 @@ def build_context_prompt(
 
     clean_triples = clean_triples[:MAX_TRIPLES]
 
-    # Build sections.
-    lines: List[str] = []
-    lines.append(SYSTEM_INSTRUCTION.strip())
-    lines.append("")
-    lines.append("Question:")
-    lines.append(question.strip())
-    lines.append("")
-    lines.append("Retrieved document chunks:")
+    # Build system prompt (instruction only).
+    system_prompt = SYSTEM_INSTRUCTION.strip()
+
+    # Build user prompt (question + context + answer placeholder).
+    user_lines: List[str] = []
+    user_lines.append("Question:")
+    user_lines.append(question.strip())
+    user_lines.append("")
+    user_lines.append("Retrieved document chunks:")
     if clean_chunks:
         for ch in clean_chunks:
             doc_id = ch["doc_id"]
             idx = ch["chunk_index"]
             text = _truncate(ch["chunk_text"], MAX_CHARS_PER_CHUNK)
-            lines.append(f"- [DOC_ID={doc_id}, INDEX={idx}] {text}")
+            user_lines.append(f"- [DOC_ID={doc_id}, INDEX={idx}] {text}")
     else:
-        lines.append("- (none)")
+        user_lines.append("- (none)")
 
-    lines.append("")
-    lines.append("Structured facts (triples):")
+    user_lines.append("")
+    user_lines.append("Structured facts (triples):")
     if clean_triples:
         for t in clean_triples:
             parts = [f"[DOC_ID={t['doc_id']}]"]
@@ -130,18 +133,21 @@ def build_context_prompt(
                 parts.append(f"TIME={t['timestamp']}")
             if t["location"]:
                 parts.append(f"LOCATION={t['location']}")
-            lines.append("- " + "; ".join(parts))
+            user_lines.append("- " + "; ".join(parts))
     else:
-        lines.append("- (none)")
+        user_lines.append("- (none)")
 
-    lines.append("")
-    lines.append("Answer:")
+    user_lines.append("")
+    user_lines.append("Answer:")
 
-    prompt = "\n".join(lines)
+    user_prompt = "\n".join(user_lines)
+    prompt = system_prompt + "\n\n" + user_prompt
     doc_ids = sorted(doc_ids_set)
 
     return {
         "prompt": prompt,
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
         "doc_ids": doc_ids,
         "chunk_count": len(clean_chunks),
         "triple_count": len(clean_triples),

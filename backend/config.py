@@ -26,9 +26,10 @@ SQLITE_DB_PATH = (
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 
-# LLM (Anthropic Claude)
+# LLM (Anthropic Claude). ANTHROPIC_MODEL can be an alias (sonnet, opus, haiku) or a concrete model ID.
+# Aliases are resolved once at first use via Models API and cached for the process.
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-6")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "sonnet")
 
 # Chunk sizes (for ingestion)
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "400"))

@@ -49,6 +49,9 @@ SUPABASE_URL: str = getattr(_env_config, "SUPABASE_URL", "")
 
 INDEX_QUERIES: Sequence[str] = (
     """
+    CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON chunks (doc_id);
+    """,
+    """
     CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON chunks
       USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
     """,
