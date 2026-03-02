@@ -26,6 +26,14 @@ _spec.loader.exec_module(_env_config)
 SUPABASE_URL: str = getattr(_env_config, "SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY: str = getattr(_env_config, "SUPABASE_SERVICE_ROLE_KEY", "")
 
+# Cap terms so the PostgREST .or_() filter does not exceed URL/parser limits.
+MAX_TRIPLE_LOOKUP_TERMS = 40
+
+
+def _escape_for_postgrest_quoted(s: str) -> str:
+    """Escape string for use inside double-quoted value in PostgREST filter (\\ and \")."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
 
 def _validate_config() -> None:
     missing = []
@@ -81,19 +89,20 @@ def triple_lookup(doc_ids: List[str], search_terms: List[str]) -> List[Dict[str,
     _validate_config()
 
     clean_doc_ids = _clean_doc_ids(doc_ids)
-    clean_terms = _clean_terms(search_terms)
+    clean_terms = _clean_terms(search_terms)[:MAX_TRIPLE_LOOKUP_TERMS]
 
     if not clean_doc_ids or not clean_terms:
         return []
 
     client = _create_supabase_client()
 
-    # Build OR filter: actor ILIKE %term% OR target ILIKE %term% for any term.
+    # Build OR filter with quoted patterns so PostgREST parses % and special chars as string value.
     filters: List[str] = []
     for term in clean_terms:
         pattern = f"%{term}%"
-        filters.append(f"actor.ilike.{pattern}")
-        filters.append(f"target.ilike.{pattern}")
+        escaped = _escape_for_postgrest_quoted(pattern)
+        filters.append(f'actor.ilike."{escaped}"')
+        filters.append(f'target.ilike."{escaped}"')
     or_filter = ",".join(filters)
 
     try:

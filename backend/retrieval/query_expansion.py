@@ -89,6 +89,11 @@ def _tokenize_query(query: str) -> List[str]:
     return tokens
 
 
+def _escape_for_postgrest_quoted(s: str) -> str:
+    """Escape string for use inside double-quoted PostgREST filter value (\\ and \")."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def expand_query(query: str) -> List[str]:
     """Expand a user query with all known aliases from entity_aliases.
 
@@ -111,13 +116,12 @@ def expand_query(query: str) -> List[str]:
     canonical_names: Set[str] = set()
     for token in tokens:
         like_pattern = f"%{token}%"
+        escaped = _escape_for_postgrest_quoted(like_pattern)
+        or_filter = f'original_name.ilike."{escaped}",canonical_name.ilike."{escaped}"'
         resp = (
             supabase.table("entity_aliases")
             .select("original_name, canonical_name")
-            .or_(
-                f"original_name.ilike.{like_pattern},"
-                f"canonical_name.ilike.{like_pattern}"
-            )
+            .or_(or_filter)
             .limit(50)
             .execute()
         )

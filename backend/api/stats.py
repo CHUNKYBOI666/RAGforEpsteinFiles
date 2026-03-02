@@ -39,17 +39,17 @@ def get_stats() -> Dict[str, int]:
     try:
         r_docs = (
             client.table("documents")
-            .select("*", count="exact", head=True)
+            .select("doc_id", count="exact", head=True)
             .execute()
         )
         r_triples = (
             client.table("rdf_triples")
-            .select("*", count="exact", head=True)
+            .select("id", count="exact", head=True)
             .execute()
         )
         r_chunks = (
             client.table("chunks")
-            .select("*", count="exact", head=True)
+            .select("id", count="exact", head=True)
             .execute()
         )
     except Exception as exc:
