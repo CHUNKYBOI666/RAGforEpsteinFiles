@@ -9,4 +9,4 @@ venv/
 
 
 # Markdown (project uses BACKEND_PLAN.md, README in repo; ignore other .md)
-*.md
+
