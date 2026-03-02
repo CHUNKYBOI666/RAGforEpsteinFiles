@@ -13,7 +13,7 @@ _dotenv_path = _backend_dir / ".env"
 if _dotenv_path.exists():
     import os
     from dotenv import load_dotenv
-    load_dotenv(_dotenv_path)
+    load_dotenv(_dotenv_path, override=True)
 _config_py = _backend_dir / "config.py"
 _spec = importlib.util.spec_from_file_location("_env_config", _config_py)
 _env_config = importlib.util.module_from_spec(_spec)

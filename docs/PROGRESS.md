@@ -11,4 +11,6 @@ Tracks completion of phases from [BACKEND_PLAN.md](BACKEND_PLAN.md#build-order).
 | **Phase 5 — API Layer** | Complete | FastAPI app in api/main.py; GET /api/chat (enriched sources), /api/document/{doc_id}, /api/document/{doc_id}/text, /api/search, /api/stats, /api/tag-clusters. Run: `cd backend && python -m uvicorn api.main:app --host 0.0.0.0 --port 8000` |
 | **Phase 6 — Frontend Integration** | Complete | Frontend calls GET /api/chat?q= and GET /api/search?q=; sources mapped to EvidenceCard, triples shown in timeline; document modal on source card click (GET /api/document/{doc_id}/text). VITE_API_URL or default http://localhost:8000. |
 
+**RAG retrieval (hybrid candidates):** Query expansion now tokenizes multi-word queries and looks up entity_aliases per token so terms like "Trump", "Epstein", "minors" are expanded. Triple-based candidate search (`get_doc_ids_by_triple_terms` RPC) returns doc_ids from `rdf_triples` by actor/target/action match; these are merged with summary-search candidates in the chat pipeline. **Required:** Run `backend/ingestion/rpc_triple_candidate_doc_ids.sql` in the Supabase SQL editor once so the RPC exists.
+
 **Status values:** `Not started` | `In progress` | `Complete`

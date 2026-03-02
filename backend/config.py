@@ -5,7 +5,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 # Supabase (only database per project.mdc)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
@@ -34,3 +34,9 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "sonnet")
 # Chunk sizes (for ingestion)
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "400"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
+
+# Retrieval pipeline (chat): candidate doc caps and merge
+SUMMARY_TOP_K = int(os.getenv("SUMMARY_TOP_K", "20"))
+TRIPLE_CANDIDATE_TOP_K = int(os.getenv("TRIPLE_CANDIDATE_TOP_K", "25"))
+MAX_CANDIDATE_DOCS = int(os.getenv("MAX_CANDIDATE_DOCS", "40"))
+CHUNK_TOP_K = int(os.getenv("CHUNK_TOP_K", "5"))

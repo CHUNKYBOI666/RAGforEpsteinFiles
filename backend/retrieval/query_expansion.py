@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import re
 from pathlib import Path
 from typing import List, Set
 
@@ -15,7 +16,7 @@ _dotenv_path = _backend_dir / ".env"
 if _dotenv_path.exists():
     from dotenv import load_dotenv
 
-    load_dotenv(_dotenv_path)
+    load_dotenv(_dotenv_path, override=True)
 
 _config_py = _backend_dir / "config.py"
 _spec = importlib.util.spec_from_file_location("_env_config", _config_py)
@@ -25,6 +26,14 @@ _spec.loader.exec_module(_env_config)
 
 SUPABASE_URL: str = getattr(_env_config, "SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY: str = getattr(_env_config, "SUPABASE_SERVICE_ROLE_KEY", "")
+
+# Stopwords to drop when tokenizing multi-word queries (so "Trump", "Epstein", "minors" surface).
+_STOPWORDS: Set[str] = {
+    "a", "an", "and", "any", "are", "did", "do", "does", "has", "have", "is",
+    "or", "that", "the", "to", "was", "were", "what", "when", "where", "which",
+    "who", "why",
+}
+_MIN_TOKEN_LEN = 2
 
 
 def _validate_config() -> None:
@@ -56,11 +65,37 @@ def _add_term_unique(terms: List[str], seen_lower: Set[str], term: str) -> None:
     terms.append(cleaned)
 
 
+def _tokenize_query(query: str) -> List[str]:
+    """Split query into tokens: non-empty, min length, not stopwords. Includes full query."""
+    stripped = query.strip()
+    if not stripped:
+        return []
+    tokens: List[str] = []
+    seen_lower: Set[str] = set()
+    # Include full query first for backward compatibility (single-name queries).
+    if len(stripped) >= _MIN_TOKEN_LEN and stripped.lower() not in _STOPWORDS:
+        tokens.append(stripped)
+        seen_lower.add(stripped.lower())
+    # Split on non-alphanumeric (keep words and numbers).
+    for part in re.split(r"[^\w]+", stripped):
+        s = part.strip()
+        if len(s) < _MIN_TOKEN_LEN:
+            continue
+        key = s.lower()
+        if key in _STOPWORDS or key in seen_lower:
+            continue
+        seen_lower.add(key)
+        tokens.append(s)
+    return tokens
+
+
 def expand_query(query: str) -> List[str]:
     """Expand a user query with all known aliases from entity_aliases.
 
-    The result always includes the original query (first), followed by
-    unique aliases (case-insensitive) for any matched canonical entity.
+    Multi-word queries are tokenized; each token (and the full query) is used
+    to match entity_aliases (original_name / canonical_name). All matched
+    canonical entities and their aliases are returned, with the original
+    query first. If no entity matches, returns [stripped query].
     """
     _validate_config()
 
@@ -69,27 +104,28 @@ def expand_query(query: str) -> List[str]:
         return []
 
     supabase = _create_supabase_client()
-    like_pattern = f"%{stripped}%"
+    tokens = _tokenize_query(stripped)
+    if not tokens:
+        return [stripped]
 
-    # First, find any canonical entities whose original or canonical name
-    # loosely matches the query string.
-    resp = (
-        supabase.table("entity_aliases")
-        .select("original_name, canonical_name")
-        .or_(
-            f"original_name.ilike.{like_pattern},"
-            f"canonical_name.ilike.{like_pattern}"
-        )
-        .limit(50)
-        .execute()
-    )
-
-    rows = resp.data or []
     canonical_names: Set[str] = set()
-    for row in rows:
-        canonical = (row.get("canonical_name") or "").strip()
-        if canonical:
-            canonical_names.add(canonical)
+    for token in tokens:
+        like_pattern = f"%{token}%"
+        resp = (
+            supabase.table("entity_aliases")
+            .select("original_name, canonical_name")
+            .or_(
+                f"original_name.ilike.{like_pattern},"
+                f"canonical_name.ilike.{like_pattern}"
+            )
+            .limit(50)
+            .execute()
+        )
+        rows = resp.data or []
+        for row in rows:
+            canonical = (row.get("canonical_name") or "").strip()
+            if canonical:
+                canonical_names.add(canonical)
 
     # If we did not recognize any canonical entity, just return the raw query.
     if not canonical_names:
@@ -117,6 +153,15 @@ def expand_query(query: str) -> List[str]:
         canonical = row.get("canonical_name") or ""
         _add_term_unique(expanded, seen_lower, original)
         _add_term_unique(expanded, seen_lower, canonical)
+
+    # Include any token that wasn't already added (e.g. "minors" for keyword-style matching).
+    for token in tokens:
+        _add_term_unique(expanded, seen_lower, token)
+
+    # Cap to avoid huge OR filters in triple lookup / triple candidate search (Supabase limits).
+    MAX_EXPANDED_TERMS = 150
+    if len(expanded) > MAX_EXPANDED_TERMS:
+        expanded = expanded[:MAX_EXPANDED_TERMS]
 
     return expanded
 

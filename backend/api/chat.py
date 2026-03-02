@@ -30,10 +30,32 @@ from retrieval.chunk_search import chunk_search
 from retrieval.llm_generation import generate_answer
 from retrieval.query_expansion import expand_query
 from retrieval.summary_search import summary_search
+from retrieval.triple_candidate_search import get_doc_ids_by_triple_terms
 from retrieval.triple_lookup import triple_lookup
 
-SUMMARY_TOP_K = 20
-CHUNK_TOP_K = 5
+SUMMARY_TOP_K = getattr(_backend_config, "SUMMARY_TOP_K", 20)
+TRIPLE_CANDIDATE_TOP_K = getattr(_backend_config, "TRIPLE_CANDIDATE_TOP_K", 25)
+MAX_CANDIDATE_DOCS = getattr(_backend_config, "MAX_CANDIDATE_DOCS", 40)
+CHUNK_TOP_K = getattr(_backend_config, "CHUNK_TOP_K", 5)
+
+
+def _merge_and_cap_candidates(
+    summary_doc_ids: List[str],
+    triple_doc_ids: List[str],
+    max_total: int,
+) -> List[str]:
+    """Merge summary-based and triple-based doc_ids; prefer summary order, cap at max_total."""
+    seen = set()
+    merged: List[str] = []
+    for doc_id in summary_doc_ids:
+        if doc_id and doc_id not in seen and len(merged) < max_total:
+            seen.add(doc_id)
+            merged.append(doc_id)
+    for doc_id in triple_doc_ids:
+        if doc_id and doc_id not in seen and len(merged) < max_total:
+            seen.add(doc_id)
+            merged.append(doc_id)
+    return merged
 
 
 def _get_query_embedding(query: str) -> List[float]:
@@ -56,8 +78,8 @@ def run_chat_pipeline(query: str) -> Dict[str, Any]:
     """Run the full 6-stage RAG pipeline and return answer, sources, triples.
 
     Stages:
-        1. Query expansion (entity_aliases)
-        2. Summary-level search -> candidate doc_ids
+        1. Query expansion (entity_aliases, tokenized for multi-word queries)
+        2. Summary-level search + triple-based candidate expansion -> merged candidate doc_ids
         3. Chunk-level search -> top chunks
         4. Triple lookup for those doc_ids
         5. Context assembly (prompt)
@@ -81,8 +103,12 @@ def run_chat_pipeline(query: str) -> Dict[str, Any]:
     # Embed query for vector search (used in stages 2 and 3)
     query_embedding = _get_query_embedding(query)
 
-    # Stage 2: summary-level search -> candidate doc_ids
-    candidate_doc_ids = summary_search(query_embedding, top_k=SUMMARY_TOP_K)
+    # Stage 2: summary-level search + triple-based candidate expansion -> merged candidate doc_ids
+    summary_doc_ids = summary_search(query_embedding, top_k=SUMMARY_TOP_K)
+    triple_doc_ids = get_doc_ids_by_triple_terms(search_terms, top_k=TRIPLE_CANDIDATE_TOP_K)
+    candidate_doc_ids = _merge_and_cap_candidates(
+        summary_doc_ids, triple_doc_ids, max_total=MAX_CANDIDATE_DOCS
+    )
 
     # Stage 3: chunk-level search within candidates
     chunks = chunk_search(

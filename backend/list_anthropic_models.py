@@ -6,7 +6,7 @@ import sys
 _backend = Path(__file__).resolve().parent
 sys.path.insert(0, str(_backend))
 from dotenv import load_dotenv
-load_dotenv(_backend / ".env")
+load_dotenv(_backend / ".env", override=True)
 
 from anthropic import Anthropic
 
