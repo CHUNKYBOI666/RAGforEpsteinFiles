@@ -14,7 +14,27 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  
+
+  /* Visible scrollbars for synthesis and evidence panels (dark theme) */
+  .scrollbar-visible::-webkit-scrollbar {
+    width: 10px;
+  }
+  .scrollbar-visible::-webkit-scrollbar-track {
+    background: rgb(39 39 42);
+    border-radius: 4px;
+  }
+  .scrollbar-visible::-webkit-scrollbar-thumb {
+    background: rgb(82 82 91);
+    border-radius: 4px;
+  }
+  .scrollbar-visible::-webkit-scrollbar-thumb:hover {
+    background: rgb(113 113 122);
+  }
+  .scrollbar-visible {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(82 82 91) rgb(39 39 42);
+  }
+
   .glass-panel {
     @apply bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 shadow-2xl;
   }

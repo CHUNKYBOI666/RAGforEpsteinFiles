@@ -1,10 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X } from 'lucide-react';
 import { CrypticBackground } from './components/CrypticBackground';
 import { EvidenceCard } from './components/EvidenceCard';
 import { api, sourcesToEvidence } from './api';
 import type { AppMode, Evidence, EntitySearchResult, Triple } from './types';
+
+/* Markdown components: structure (headers, lists, bold) with dark theme */
+const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+  p: ({ children }) => <p className="mb-3 last:mb-0 text-zinc-300 leading-relaxed">{children}</p>,
+  h1: ({ children }) => <h1 className="text-2xl font-serif font-semibold text-zinc-100 mt-6 mb-2 first:mt-0">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-xl font-serif font-semibold text-zinc-100 mt-5 mb-2 first:mt-0">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-lg font-serif font-semibold text-zinc-200 mt-4 mb-2 first:mt-0">{children}</h3>,
+  strong: ({ children }) => <strong className="font-semibold text-zinc-200">{children}</strong>,
+  ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1 text-zinc-300">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1 text-zinc-300">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  blockquote: ({ children }) => <blockquote className="border-l-2 border-zinc-600 pl-4 my-3 text-zinc-400 italic">{children}</blockquote>,
+  code: ({ children }) => <code className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono text-sm">{children}</code>,
+};
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('chat');
@@ -29,6 +45,7 @@ export default function App() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const evidencePanelScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -39,6 +56,11 @@ export default function App() {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [answer, evidence, triples, entityResults]);
+
+  /* Reset evidence panel scroll to top when results change so first source is fully visible */
+  useEffect(() => {
+    evidencePanelScrollRef.current?.scrollTo(0, 0);
+  }, [evidence, entityResults]);
 
   // Fetch document text when modal opens
   useEffect(() => {
@@ -103,23 +125,30 @@ export default function App() {
         return (
           <span
             key={i}
-            className="inline-flex items-center justify-center w-5 h-5 rounded bg-zinc-800 text-xs font-mono text-zinc-300 border border-zinc-600 mx-1 cursor-pointer hover:bg-zinc-700 transition-colors"
+            className="inline-flex items-center justify-center w-5 h-5 rounded bg-zinc-800 text-xs font-mono text-zinc-300 border border-zinc-600 mx-1 cursor-pointer hover:bg-zinc-700 transition-colors align-middle"
             title={`View Evidence ${match[1]}`}
           >
             {match[1]}
           </span>
         );
       }
-      return <span key={i}>{part}</span>;
+      if (!part.trim()) return <span key={i} />;
+      return (
+        <div key={i} className="answer-markdown">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {part}
+          </ReactMarkdown>
+        </div>
+      );
     });
   };
 
   return (
-    <div className="relative min-h-screen bg-zinc-950 text-zinc-200 font-sans overflow-hidden flex flex-col">
+    <div className="relative h-screen min-h-0 bg-zinc-950 text-zinc-200 font-sans overflow-hidden flex flex-col">
       <CrypticBackground />
 
-      {/* Header */}
-      <header className="relative z-20 flex items-center justify-between p-6 border-b border-zinc-800/50 bg-zinc-950/50 backdrop-blur-sm">
+      {/* Header — fixed at top, never shrinks */}
+      <header className="sticky top-0 z-20 shrink-0 flex items-center justify-between p-6 border-b border-zinc-800/50 bg-zinc-950/50 backdrop-blur-sm">
         <div className="flex items-center space-x-3">
           <ShieldAlert className="w-6 h-6 text-zinc-400" />
           <h1 className="font-serif text-xl tracking-widest uppercase text-zinc-100 font-semibold">
@@ -149,8 +178,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="relative z-10 flex-1 flex flex-col overflow-hidden">
+      {/* Main Content Area — min-h-0 so flex children can scroll */}
+      <main className="relative z-10 flex-1 min-h-0 flex flex-col overflow-hidden">
         <AnimatePresence mode="wait">
           {!hasSearched ? (
             <motion.div
@@ -207,11 +236,11 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.4 }}
-              className="flex-1 flex overflow-hidden"
+              className="flex-1 flex min-h-0 overflow-hidden"
             >
-              {/* Left Column: Synthesis / Thread */}
-              <div className="flex-1 min-w-0 flex flex-col border-r border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md relative">
-                <div className="flex-1 min-h-0 overflow-y-auto p-6 md:p-10 scrollbar-hide">
+              {/* Left Column: Synthesis / Thread — scrollable independently */}
+              <div className="flex-1 min-w-0 min-h-0 flex flex-col border-r border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md relative">
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-6 md:p-10 pb-28 scrollbar-visible">
                   <div className="max-w-3xl mx-auto">
                     <div className="mb-10">
                       <h3 className="text-2xl font-serif text-zinc-100 mb-2">{activeQuery}</h3>
@@ -307,9 +336,9 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Right Column: Evidence / Entity Panel */}
-              <div className="w-full md:w-[400px] lg:w-[480px] bg-zinc-950/90 backdrop-blur-xl flex flex-col border-l border-zinc-900 shadow-2xl z-20">
-                <div className="p-4 border-b border-zinc-800/50 flex items-center justify-between bg-zinc-900/50">
+              {/* Right Column: Evidence / Entity Panel — scrollable independently */}
+              <div className="w-full md:w-[400px] lg:w-[480px] min-h-0 shrink-0 bg-zinc-950/90 backdrop-blur-xl flex flex-col border-l border-zinc-900 shadow-2xl z-20">
+                <div className="shrink-0 p-4 border-b border-zinc-800/50 flex items-center justify-between bg-zinc-900/50">
                   <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest flex items-center">
                     <FileText className="w-3.5 h-3.5 mr-2" />
                     {mode === 'chat' ? 'Source Evidence' : 'Entity matches'}
@@ -319,7 +348,10 @@ export default function App() {
                   </span>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+                <div
+                  ref={evidencePanelScrollRef}
+                  className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4 scrollbar-visible"
+                >
                   {isSearching ? (
                     <div className="space-y-4">
                       {[1, 2, 3].map((i) => (
