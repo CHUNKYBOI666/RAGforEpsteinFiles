@@ -6,7 +6,7 @@ __pycache__/
 venv/
 
 .cursor/plans/
-docs/
+
 
 # Markdown (project uses BACKEND_PLAN.md, README in repo; ignore other .md)
 *.md
