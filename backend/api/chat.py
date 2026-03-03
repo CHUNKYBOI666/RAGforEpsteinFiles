@@ -7,6 +7,8 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Query
 from openai import OpenAI
 
+from api.auth import RequireAuth
+
 # Backend config (load config.py file, not config package) and retrieval stages
 import importlib.util
 import sys
@@ -105,7 +107,11 @@ def run_chat_pipeline(query: str) -> Dict[str, Any]:
 
     # Stage 2: summary-level search + triple-based candidate expansion -> merged candidate doc_ids
     summary_doc_ids = summary_search(query_embedding, top_k=SUMMARY_TOP_K)
-    triple_doc_ids = get_doc_ids_by_triple_terms(search_terms, top_k=TRIPLE_CANDIDATE_TOP_K)
+    try:
+        triple_doc_ids = get_doc_ids_by_triple_terms(search_terms, top_k=TRIPLE_CANDIDATE_TOP_K)
+    except Exception:
+        # If triple-based candidate expansion fails (e.g., RPC timeout), fall back to summary-only.
+        triple_doc_ids = []
     candidate_doc_ids = _merge_and_cap_candidates(
         summary_doc_ids, triple_doc_ids, max_total=MAX_CANDIDATE_DOCS
     )
@@ -147,8 +153,11 @@ router = APIRouter(tags=["chat"])
 
 
 @router.get("/chat")
-def api_chat(q: str = Query(..., description="Natural language question")):
-    """GET /api/chat?q= — run RAG pipeline, return answer + enriched sources + triples."""
+def api_chat(
+    q: str = Query(..., description="Natural language question"),
+    user_id: RequireAuth = None,  # Injected by FastAPI (still required for access control)
+):
+    """GET /api/chat?q= — run RAG pipeline, return answer + enriched sources + triples. Requires Authorization: Bearer <token>."""
     result = run_chat_pipeline(q)
     doc_ids = [s.get("doc_id") for s in result["sources"] if s.get("doc_id")]
     if doc_ids:

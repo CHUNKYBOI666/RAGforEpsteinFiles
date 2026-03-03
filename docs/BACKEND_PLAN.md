@@ -44,7 +44,7 @@ A mapping of name variants to canonical names (e.g. "Jeff Epstein" → "Jeffrey 
 | Primary database | Supabase (PostgreSQL) | Handles both relational data and vector search via pgvector in one place, generous free tier |
 | Vector search | pgvector extension on Supabase | Eliminates a separate Pinecone account, keeps everything in one DB |
 | Embedding model | OpenAI `text-embedding-3-small` | Low cost (~$1 total for the full corpus), high quality, 1536 dimensions |
-| LLM | Anthropic Claude (claude-opus-4-6) | Excellent at grounded, citation-aware responses; less likely to hallucinate when given structured context |
+| LLM | Anthropic Claude (default) or OpenAI-compatible (Groq, Together, OpenRouter, vLLM, Ollama) | Set `LLM_PROVIDER=anthropic` or `openai_compatible`; Claude is strong for grounded, citation-aware answers; open-source options reduce cost at scale. |
 | Data source | `document_analysis.db` from the repo | Already processed, free, MIT licensed |
 | Frontend | Existing React app from the repo | Reuse their DocumentModal and timeline card components for citation UI |
 
@@ -243,3 +243,23 @@ The extraction pipeline makes thousands of Claude API calls and costs real money
 
 **Why OpenAI for embeddings but Claude for generation?**
 OpenAI's `text-embedding-3-small` is the most cost-effective high-quality embedding model available. There is no meaningful benefit to using a different model for embeddings since the embedding model and the generation model do not need to be from the same provider. Claude is used for generation because it is better at producing grounded, citation-faithful answers when given structured context.
+
+---
+
+## Environment variables
+
+Set these in `backend/.env` (or your environment). All credentials and URLs are env-only; see `backend/config.py` for defaults.
+
+| Variable | Purpose |
+|----------|---------|
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase project; required for DB and pgvector. |
+| `SUPABASE_DB_URL` | Direct Postgres connection string for migrations/index creation. |
+| `OPENAI_API_KEY`, `OPENAI_EMBED_MODEL` | Embeddings (default `text-embedding-3-small`). |
+| **LLM (chat)** | |
+| `LLM_PROVIDER` | `anthropic` (default) or `openai_compatible`. |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Used when `LLM_PROVIDER=anthropic`. Model can be alias (`sonnet`, `opus`, `haiku`) or concrete ID. |
+| `LLM_BASE_URL`, `LLM_MODEL` | Used when `LLM_PROVIDER=openai_compatible`. Base URL and model name for Groq, Together, OpenRouter, vLLM, Ollama, etc. |
+| `LLM_API_KEY` | Optional; required by some providers (e.g. Groq, Together, OpenRouter). Leave unset or use a placeholder (e.g. `ollama`) for local servers that do not require auth. |
+| `SQLITE_DB_PATH` / `DOC_EXPLORER_DB_PATH` | Path to source `document_analysis.db` for migration. |
+| `CHUNK_SIZE`, `CHUNK_OVERLAP` | Chunking for ingestion. |
+| `SUMMARY_TOP_K`, `TRIPLE_CANDIDATE_TOP_K`, `MAX_CANDIDATE_DOCS`, `CHUNK_TOP_K` | Retrieval pipeline tuning. |

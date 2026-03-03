@@ -47,4 +47,35 @@ export interface EntitySearchResponse {
   results: EntitySearchResult[];
 }
 
-export type AppMode = 'chat' | 'search';
+/** Graph node (entity) from GET /api/graph */
+export interface GraphNode {
+  id: string;
+  label: string;
+  count: number;
+}
+
+/** Graph edge (triple) from GET /api/graph */
+export interface GraphEdge {
+  source: string;
+  target: string;
+  action: string;
+  doc_id: string;
+  timestamp: string;
+  location: string;
+}
+
+/** Backend graph response (GET /api/graph) */
+export interface GraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+/** Stats from GET /api/stats */
+export interface StatsResponse {
+  document_count: number;
+  triple_count: number;
+  chunk_count: number;
+  actor_count: number;
+}
+
+export type AppMode = 'chat' | 'search' | 'graph';

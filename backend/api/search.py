@@ -30,15 +30,40 @@ def _create_supabase_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 
+def _count_entity_triples(client: Client, name: str) -> int:
+    """Return total triples where actor=name or target=name."""
+    try:
+        r_actor = (
+            client.table("rdf_triples")
+            .select("*", count="exact", head=True)
+            .eq("actor", name)
+            .execute()
+        )
+        r_target = (
+            client.table("rdf_triples")
+            .select("*", count="exact", head=True)
+            .eq("target", name)
+            .execute()
+        )
+    except Exception as exc:
+        raise RuntimeError("Failed to count rdf_triples from Supabase") from exc
+    count_actor = getattr(r_actor, "count", None) or 0
+    count_target = getattr(r_target, "count", None) or 0
+    return count_actor + count_target
+
+
 def search_entities(query: str) -> List[Dict[str, Any]]:
-    """Fuzzy search entity_aliases; return distinct canonical_name with relationship count from rdf_triples."""
+    """Fuzzy search entity_aliases and rdf_triples actor/target; return canonical_name with relationship count."""
     q = (query or "").strip()
     if not q:
         return []
     client = _create_supabase_client()
     pattern = f"%{q}%"
+    seen: set = set()
+    out: List[Dict[str, Any]] = []
+
+    # 1) entity_aliases: original_name or canonical_name ilike
     try:
-        # Match original_name or canonical_name
         resp = (
             client.table("entity_aliases")
             .select("canonical_name")
@@ -48,34 +73,30 @@ def search_entities(query: str) -> List[Dict[str, Any]]:
         )
     except Exception as exc:
         raise RuntimeError("Failed to query entity_aliases from Supabase") from exc
-    rows = resp.data or []
-    canonical_names = list({r.get("canonical_name") for r in rows if r.get("canonical_name")})
-    if not canonical_names:
-        return []
+    for r in resp.data or []:
+        name = r.get("canonical_name")
+        if name and name not in seen:
+            seen.add(name)
+            out.append({"canonical_name": name, "count": _count_entity_triples(client, name)})
 
-    # Count triples where actor or target equals each canonical name (head=True for count only)
-    out: List[Dict[str, Any]] = []
-    for name in canonical_names:
-        try:
-            r_actor = (
+    # 2) rdf_triples: distinct actor/target ilike (e.g. "trump" -> "Donald Trump" when no alias)
+    try:
+        for col in ("actor", "target"):
+            resp = (
                 client.table("rdf_triples")
-                .select("*", count="exact", head=True)
-                .eq("actor", name)
+                .select(col)
+                .ilike(col, pattern)
+                .limit(150)
                 .execute()
             )
-            r_target = (
-                client.table("rdf_triples")
-                .select("*", count="exact", head=True)
-                .eq("target", name)
-                .execute()
-            )
-        except Exception as exc:
-            raise RuntimeError("Failed to count rdf_triples from Supabase") from exc
-        count_actor = getattr(r_actor, "count", None) or 0
-        count_target = getattr(r_target, "count", None) or 0
-        # Relationship count: triples where this entity is actor or target (may double-count same triple)
-        count = count_actor + count_target
-        out.append({"canonical_name": name, "count": count})
+            for r in resp.data or []:
+                name = (r.get(col) or "").strip()
+                if name and name not in seen:
+                    seen.add(name)
+                    out.append({"canonical_name": name, "count": _count_entity_triples(client, name)})
+    except Exception as exc:
+        raise RuntimeError("Failed to query rdf_triples from Supabase") from exc
+
     out.sort(key=lambda x: -x["count"])
     return out
 

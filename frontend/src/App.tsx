@@ -2,11 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X } from 'lucide-react';
+import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network, LogOut } from 'lucide-react';
 import { CrypticBackground } from './components/CrypticBackground';
+import { AuthModal } from './components/AuthModal';
 import { EvidenceCard } from './components/EvidenceCard';
+import { RelationshipGraph } from './components/RelationshipGraph';
 import { api, sourcesToEvidence } from './api';
-import type { AppMode, Evidence, EntitySearchResult, Triple } from './types';
+import { useAuth } from './contexts/AuthContext';
+import type { AppMode, Evidence, EntitySearchResult, GraphEdge, GraphNode, StatsResponse, Triple } from './types';
 
 /* Markdown components: structure (headers, lists, bold) with dark theme */
 const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
@@ -22,7 +25,12 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
   code: ({ children }) => <code className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono text-sm">{children}</code>,
 };
 
+const DATE_RANGE_MIN = 1980;
+const DATE_RANGE_MAX = 2025;
+
 export default function App() {
+  const { user, accessToken, signInWithGoogle, signOut, loading: authLoading } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [mode, setMode] = useState<AppMode>('chat');
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -36,6 +44,23 @@ export default function App() {
 
   // Search mode: entity list (canonical_name + count)
   const [entityResults, setEntityResults] = useState<EntitySearchResult[]>([]);
+
+  // Graph mode: graph data, filters, selected node, stats
+  const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
+  const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphEntity, setGraphEntity] = useState('');
+  const [graphKeywords, setGraphKeywords] = useState('');
+  const [graphYearMin, setGraphYearMin] = useState(DATE_RANGE_MIN);
+  const [graphYearMax, setGraphYearMax] = useState(DATE_RANGE_MAX);
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
+  // Graph entity suggestions: preset list (loaded once) + filtered suggestions
+  const [graphEntityPresetList, setGraphEntityPresetList] = useState<EntitySearchResult[]>([]);
+  const [graphEntityPresetLoading, setGraphEntityPresetLoading] = useState(false);
+  const [graphEntitySuggestions, setGraphEntitySuggestions] = useState<EntitySearchResult[]>([]);
+  const [graphEntitySuggestionsOpen, setGraphEntitySuggestionsOpen] = useState(false);
+  const graphEntityContainerRef = useRef<HTMLDivElement>(null);
 
   // Document modal
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -55,7 +80,14 @@ export default function App() {
     if (hasSearched) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [answer, evidence, triples, entityResults]);
+  }, [answer, evidence, triples, entityResults, hasSearched]);
+
+  // Fetch stats when in graph mode (for sidebar)
+  useEffect(() => {
+    if (mode === 'graph') {
+      api.getStats().then(setStats).catch(() => setStats(null));
+    }
+  }, [mode]);
 
   /* Reset evidence panel scroll to top when results change so first source is fully visible */
   useEffect(() => {
@@ -84,9 +116,78 @@ export default function App() {
       .finally(() => setDocumentLoading(false));
   }, [selectedDocId]);
 
+  // Load preset entity list once when entering graph mode
+  useEffect(() => {
+    if (mode !== 'graph') return;
+    setGraphEntityPresetLoading(true);
+    api
+      .getEntityPreset()
+      .then((res) => setGraphEntityPresetList(res.results ?? []))
+      .catch(() => setGraphEntityPresetList([]))
+      .finally(() => setGraphEntityPresetLoading(false));
+  }, [mode]);
+
+  // Filter preset list on keystroke (instant); fallback to server search when preset has no match
+  useEffect(() => {
+    const trimmed = graphEntity.trim().toLowerCase();
+    if (trimmed.length < 1) {
+      setGraphEntitySuggestions([]);
+      setGraphEntitySuggestionsOpen(false);
+      return;
+    }
+    if (graphEntityPresetLoading) {
+      setGraphEntitySuggestions([]);
+      setGraphEntitySuggestionsOpen(true);
+      return;
+    }
+    const fromPreset = graphEntityPresetList.filter((r) =>
+      (r.canonical_name ?? '').toLowerCase().includes(trimmed)
+    );
+    if (fromPreset.length > 0) {
+      setGraphEntitySuggestions(fromPreset);
+      setGraphEntitySuggestionsOpen(true);
+      return;
+    }
+    // Fallback: preset capped or no match — call server search once
+    if (trimmed.length >= 2) {
+      api.search(graphEntity.trim()).then((res) => {
+        const list = res.results ?? [];
+        setGraphEntitySuggestions(list);
+        setGraphEntitySuggestionsOpen(true);
+      });
+    } else {
+      setGraphEntitySuggestions([]);
+      setGraphEntitySuggestionsOpen(false);
+    }
+  }, [graphEntity, graphEntityPresetList]);
+
+  // Click outside or Escape to close graph entity suggestions
+  useEffect(() => {
+    if (!graphEntitySuggestionsOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (graphEntityContainerRef.current?.contains(e.target as Node)) return;
+      setGraphEntitySuggestionsOpen(false);
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setGraphEntitySuggestionsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [graphEntitySuggestionsOpen]);
+
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (mode === 'graph') return;
     if (!query.trim() || isSearching) return;
+
+    if (mode === 'chat' && !user) {
+      setShowAuthModal(true);
+      return;
+    }
 
     setIsSearching(true);
     setHasSearched(true);
@@ -98,8 +199,8 @@ export default function App() {
     setSelectedDocId(null);
 
     try {
-      if (mode === 'chat') {
-        const res = await api.chat(query);
+        if (mode === 'chat') {
+        const res = await api.chat(query, accessToken);
         setAnswer(res.answer);
         setEvidence(sourcesToEvidence(res.sources));
         setTriples(res.triples ?? []);
@@ -109,10 +210,35 @@ export default function App() {
       }
     } catch (error) {
       console.error('Error fetching data:', error);
-      setAnswer('Error connecting to the archive. Please check your clearance and try again.');
+      const msg = error instanceof Error ? error.message : '';
+      setAnswer(msg?.includes('Sign in') ? msg : 'Error connecting to the archive. Please check your clearance and try again.');
     } finally {
       setIsSearching(false);
       setQuery('');
+    }
+  };
+
+  const handleLoadGraph = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (graphLoading) return;
+    setGraphLoading(true);
+    setSelectedGraphNodeId(null);
+    try {
+      const res = await api.getGraph({
+        entity: graphEntity.trim() || undefined,
+        keywords: graphKeywords.trim() || undefined,
+        date_from: String(graphYearMin),
+        date_to: String(graphYearMax),
+        limit: 500,
+      });
+      setGraphNodes(res.nodes);
+      setGraphEdges(res.edges);
+    } catch (err) {
+      console.error('Error loading graph:', err);
+      setGraphNodes([]);
+      setGraphEdges([]);
+    } finally {
+      setGraphLoading(false);
     }
   };
 
@@ -156,6 +282,30 @@ export default function App() {
           </h1>
         </div>
 
+        <div className="flex items-center gap-4">
+          {user ? (
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-zinc-400 font-mono truncate max-w-[180px]" title={user.email ?? undefined}>
+                {user.email}
+              </span>
+              <button
+                type="button"
+                onClick={() => signOut()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Log out
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowAuthModal(true)}
+              className="px-4 py-1.5 rounded-md text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+            >
+              Sign in
+            </button>
+          )}
         <div className="flex bg-zinc-900/80 p-1 rounded-lg border border-zinc-800">
           <button
             onClick={() => setMode('chat')}
@@ -175,11 +325,208 @@ export default function App() {
             <Search className="w-4 h-4 mr-2" />
             Raw Search
           </button>
+          <button
+            onClick={() => setMode('graph')}
+            className={`flex items-center px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+              mode === 'graph' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Network className="w-4 h-4 mr-2" />
+            Network
+          </button>
+        </div>
         </div>
       </header>
 
       {/* Main Content Area — min-h-0 so flex children can scroll */}
       <main className="relative z-10 flex-1 min-h-0 flex flex-col overflow-hidden">
+        {mode === 'graph' ? (
+          <div className="flex-1 flex min-h-0 overflow-hidden">
+            {/* Graph canvas */}
+            <div className="flex-1 min-w-0 min-h-0 relative bg-zinc-950/80 border-r border-zinc-800/50">
+              {graphLoading ? (
+                <div className="absolute inset-0 flex items-center justify-center text-zinc-400 font-mono text-sm">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  Loading graph...
+                </div>
+              ) : graphNodes.length === 0 ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-zinc-500">
+                  <p className="font-mono text-sm mb-4">Search for an entity to explore connections.</p>
+                  <p className="text-xs text-zinc-600">Use the sidebar to set filters and click Go to load the graph.</p>
+                </div>
+              ) : (
+                <RelationshipGraph
+                  nodes={graphNodes}
+                  edges={graphEdges}
+                  selectedNodeId={selectedGraphNodeId}
+                  onNodeClick={setSelectedGraphNodeId}
+                  onDocClick={setSelectedDocId}
+                  width={undefined}
+                  height={undefined}
+                />
+              )}
+              {graphNodes.length > 0 && (
+                <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs font-mono text-zinc-500">
+                  Click nodes to explore relationships.
+                </p>
+              )}
+            </div>
+            {/* Graph sidebar: stats, filters, selected node triples */}
+            <div className="w-full md:w-[400px] lg:w-[420px] min-h-0 shrink-0 bg-zinc-950/90 backdrop-blur-xl flex flex-col border-l border-zinc-900 shadow-2xl z-20 overflow-hidden">
+              <div className="shrink-0 p-4 border-b border-zinc-800/50 bg-zinc-900/50 space-y-4">
+                <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest">
+                  Graph settings
+                </h3>
+                {stats && (
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono text-zinc-500">
+                    <span>Documents</span>
+                    <span className="text-zinc-400">{stats.document_count.toLocaleString()}</span>
+                    <span>Relationships</span>
+                    <span className="text-zinc-400">{stats.triple_count.toLocaleString()}</span>
+                    <span>Events</span>
+                    <span className="text-zinc-400">{stats.triple_count.toLocaleString()}</span>
+                  </div>
+                )}
+                <form onSubmit={handleLoadGraph} className="space-y-3">
+                  <div ref={graphEntityContainerRef} className="relative">
+                    <input
+                      type="text"
+                      value={graphEntity}
+                      onChange={(e) => setGraphEntity(e.target.value)}
+                      placeholder="e.g., Jeffrey Epstein"
+                      className="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600"
+                    />
+                    {graphEntitySuggestionsOpen && (graphEntitySuggestions.length > 0 || graphEntityPresetLoading) && (
+                      <ul
+                        className="absolute left-0 right-0 top-full z-30 mt-1 max-h-48 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 py-1 shadow-xl"
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        {graphEntityPresetLoading ? (
+                          <li className="px-3 py-3 text-sm text-zinc-500 font-mono">
+                            Loading suggestions...
+                          </li>
+                        ) : graphEntitySuggestions.length > 0 ? (
+                          graphEntitySuggestions.map((r) => (
+                            <li key={r.canonical_name}>
+                              <button
+                                type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setGraphEntity(r.canonical_name ?? '');
+                                  setGraphEntitySuggestionsOpen(false);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 font-mono flex justify-between items-center"
+                              >
+                                <span>{r.canonical_name}</span>
+                                <span className="text-zinc-500 text-xs">{r.count} relationships</span>
+                              </button>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="px-3 py-3 text-sm text-zinc-500 font-mono">No matches.</li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={graphKeywords}
+                    onChange={(e) => setGraphKeywords(e.target.value)}
+                    placeholder="e.g., massage, aircraft, island"
+                    className="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600"
+                  />
+                  <div className="space-y-2">
+                    <p className="text-xs font-mono text-zinc-500">
+                      Date range: {graphYearMin} – {graphYearMax}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-xs text-zinc-500 font-mono">From</label>
+                      <label className="text-xs text-zinc-500 font-mono">To</label>
+                      <input
+                        type="range"
+                        min={DATE_RANGE_MIN}
+                        max={DATE_RANGE_MAX}
+                        value={graphYearMin}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setGraphYearMin(v);
+                          if (v > graphYearMax) setGraphYearMax(v);
+                        }}
+                        className="w-full h-2 rounded-lg appearance-none bg-zinc-800 accent-zinc-500 cursor-pointer"
+                      />
+                      <input
+                        type="range"
+                        min={DATE_RANGE_MIN}
+                        max={DATE_RANGE_MAX}
+                        value={graphYearMax}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setGraphYearMax(v);
+                          if (v < graphYearMin) setGraphYearMin(v);
+                        }}
+                        className="w-full h-2 rounded-lg appearance-none bg-zinc-800 accent-zinc-500 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={graphLoading}
+                    className="w-full py-2 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50 font-mono text-sm"
+                  >
+                    {graphLoading ? 'Loading...' : 'Go'}
+                  </button>
+                </form>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                <h4 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+                  {selectedGraphNodeId ? 'Structured facts' : 'Select a node'}
+                </h4>
+                {selectedGraphNodeId && (
+                  <ul className="space-y-3">
+                    {graphEdges
+                      .filter((e) => e.source === selectedGraphNodeId || e.target === selectedGraphNodeId)
+                      .map((edge, i) => (
+                        <li
+                          key={`${edge.source}-${edge.target}-${edge.action}-${i}`}
+                          className="text-sm text-zinc-400 font-mono border-l-2 border-zinc-700 pl-3 py-1"
+                        >
+                          <span className="text-zinc-300">{edge.source}</span>
+                          {' — '}
+                          {edge.action}
+                          {edge.target && (
+                            <>
+                              {' → '}
+                              <span className="text-zinc-300">{edge.target}</span>
+                            </>
+                          )}
+                          {edge.timestamp && (
+                            <span className="text-zinc-500 ml-2">({edge.timestamp})</span>
+                          )}
+                          {edge.location && (
+                            <span className="text-zinc-500 ml-2">@ {edge.location}</span>
+                          )}
+                          {edge.doc_id && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDocId(edge.doc_id)}
+                              className="ml-2 text-xs text-zinc-500 hover:text-zinc-300 underline"
+                            >
+                              View doc
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                  </ul>
+                )}
+                {selectedGraphNodeId && graphEdges.filter((e) => e.source === selectedGraphNodeId || e.target === selectedGraphNodeId).length === 0 && (
+                  <p className="text-zinc-500 text-sm">No triples in this view for this node.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         <AnimatePresence mode="wait">
           {!hasSearched ? (
             <motion.div
@@ -221,6 +568,19 @@ export default function App() {
                   </button>
                 </div>
               </form>
+
+              {mode === 'chat' && !user && !authLoading && (
+                <div className="mt-4 flex items-center justify-center gap-3 text-sm">
+                  <span className="text-zinc-500 font-mono">Sign in to ask a question.</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthModal(true)}
+                    className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 font-mono text-sm transition-colors"
+                  >
+                    Sign in
+                  </button>
+                </div>
+              )}
 
               <div className="mt-8 flex gap-4 text-xs font-mono text-zinc-500">
                 <span>SYSTEM: ONLINE</span>
@@ -321,7 +681,11 @@ export default function App() {
                         type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Dig deeper..."
+                        placeholder={
+                          mode === 'chat'
+                            ? 'Dig deeper...'
+                            : 'Search entity names...'
+                        }
                         className="flex-1 bg-transparent border-none outline-none text-zinc-200 placeholder-zinc-600 py-3 px-4"
                       />
                       <button
@@ -406,6 +770,9 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
+        </div>
+        )}
       </main>
 
       {/* Document modal */}
@@ -453,6 +820,12 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onSignInWithGoogle={signInWithGoogle}
+      />
     </div>
   );
 }

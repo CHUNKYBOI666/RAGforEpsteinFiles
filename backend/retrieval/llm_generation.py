@@ -1,4 +1,4 @@
-"""Stage 6: send assembled context to Claude; return answer, sources, triples."""
+"""Stage 6: send assembled context to LLM (Claude or OpenAI-compatible); return answer, sources, triples."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from anthropic import Anthropic
 from anthropic import NotFoundError as AnthropicNotFoundError
+from openai import OpenAI as OpenAIClient
 
 # Load backend config (env only)
 _backend_dir = Path(__file__).resolve().parent.parent
@@ -17,8 +18,12 @@ _env_config = importlib.util.module_from_spec(_spec)
 assert _spec is not None and _spec.loader is not None
 _spec.loader.exec_module(_env_config)
 
+LLM_PROVIDER: str = getattr(_env_config, "LLM_PROVIDER", "anthropic").strip().lower()
 ANTHROPIC_API_KEY: str = getattr(_env_config, "ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL: str = getattr(_env_config, "ANTHROPIC_MODEL", "sonnet")
+LLM_BASE_URL: str = getattr(_env_config, "LLM_BASE_URL", "").strip()
+LLM_MODEL: str = getattr(_env_config, "LLM_MODEL", "").strip()
+LLM_API_KEY: str = getattr(_env_config, "LLM_API_KEY", "").strip()
 
 DEFAULT_MAX_TOKENS = 1024
 
@@ -58,10 +63,61 @@ def _get_model_id_for_messages() -> str:
 
 
 def _validate_config() -> None:
-    if not ANTHROPIC_API_KEY:
+    if LLM_PROVIDER == "anthropic":
+        if not ANTHROPIC_API_KEY:
+            raise ValueError(
+                "LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set. "
+                "Set it in backend/.env or your environment."
+            )
+    elif LLM_PROVIDER == "openai_compatible":
+        if not LLM_BASE_URL or not LLM_MODEL:
+            raise ValueError(
+                "LLM_PROVIDER=openai_compatible but LLM_BASE_URL or LLM_MODEL is not set. "
+                "Set both in backend/.env (and LLM_API_KEY if the provider requires it)."
+            )
+    else:
         raise ValueError(
-            "ANTHROPIC_API_KEY is not set. Set it in backend/.env or your environment."
+            f"LLM_PROVIDER={LLM_PROVIDER!r} is not supported. Use 'anthropic' or 'openai_compatible'."
         )
+
+
+def _call_anthropic(system_prompt: str, user_prompt: str) -> str:
+    """Call Anthropic Messages API; return response text."""
+    client = Anthropic(api_key=ANTHROPIC_API_KEY)
+    model_id = _get_model_id_for_messages()
+    message = client.messages.create(
+        model=model_id,
+        max_tokens=DEFAULT_MAX_TOKENS,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+    answer = ""
+    if message.content and len(message.content) > 0:
+        block = message.content[0]
+        if hasattr(block, "text"):
+            answer = block.text or ""
+    return answer
+
+
+def _call_openai_compatible(system_prompt: str, user_prompt: str) -> str:
+    """Call OpenAI-compatible chat completions API; return response text."""
+    api_key = LLM_API_KEY if LLM_API_KEY else "ollama"
+    client = OpenAIClient(base_url=LLM_BASE_URL, api_key=api_key)
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    response = client.chat.completions.create(
+        model=LLM_MODEL,
+        max_tokens=DEFAULT_MAX_TOKENS,
+        messages=messages,
+    )
+    answer = ""
+    if response.choices and len(response.choices) > 0:
+        msg = response.choices[0].message
+        if msg and getattr(msg, "content", None):
+            answer = msg.content or ""
+    return answer
 
 
 def generate_answer(
@@ -70,7 +126,10 @@ def generate_answer(
     doc_ids: List[str],
     triples: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Call Claude with the assembled context; return answer, sources, triples.
+    """Call LLM with the assembled context; return answer, sources, triples.
+
+    Uses Anthropic Claude when LLM_PROVIDER=anthropic, or any OpenAI-compatible
+    API (Groq, Together, OpenRouter, vLLM, Ollama) when LLM_PROVIDER=openai_compatible.
 
     Args:
         system_prompt: System instruction (cite doc_ids, use only context).
@@ -80,33 +139,18 @@ def generate_answer(
 
     Returns:
         Dict with:
-          - "answer": str (Claude's prose response)
+          - "answer": str (LLM prose response)
           - "sources": list of {"doc_id": str} (one per doc_id)
           - "triples": list of triple dicts (actor, action, target, timestamp, location, doc_id)
     """
     _validate_config()
 
-    client = Anthropic(api_key=ANTHROPIC_API_KEY)
-    model_id = _get_model_id_for_messages()
+    if LLM_PROVIDER == "anthropic":
+        answer = _call_anthropic(system_prompt, user_prompt)
+    else:
+        answer = _call_openai_compatible(system_prompt, user_prompt)
 
-    message = client.messages.create(
-        model=model_id,
-        max_tokens=DEFAULT_MAX_TOKENS,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-
-    # Extract text from first content block
-    answer = ""
-    if message.content and len(message.content) > 0:
-        block = message.content[0]
-        if hasattr(block, "text"):
-            answer = block.text or ""
-
-    # sources: one entry per doc_id (minimal for Phase 4; Phase 5 can enrich with document metadata)
     sources = [{"doc_id": str(doc_id)} for doc_id in doc_ids]
-
-    # triples: same list we sent in context (from triple_lookup)
     triples_out: List[Dict[str, Any]] = []
     for t in triples or []:
         triples_out.append(

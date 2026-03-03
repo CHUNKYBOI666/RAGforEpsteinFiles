@@ -1,4 +1,12 @@
-import type { ChatResponse, EntitySearchResponse, Evidence, Source } from './types';
+import type { ChatResponse, EntitySearchResponse, Evidence, GraphResponse, Source, StatsResponse } from './types';
+
+export interface GetGraphParams {
+  entity?: string;
+  date_from?: string;
+  date_to?: string;
+  keywords?: string;
+  limit?: number;
+}
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -44,6 +52,20 @@ const MOCK_EVIDENCE: Evidence[] = [
 ];
 
 export const api = {
+  /** GET /api/entities — preset list of all entities (names + counts) for graph dropdown */
+  async getEntityPreset(): Promise<EntitySearchResponse> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/entities`);
+      if (!res.ok) throw new Error('Network response was not ok');
+      const data = await res.json();
+      return { results: Array.isArray(data) ? data : [] };
+    } catch (error) {
+      console.warn('Backend unreachable, using empty entity preset');
+      await delay(400);
+      return { results: [] };
+    }
+  },
+
   /** GET /api/search?q= — entity/actor search; returns canonical names + counts */
   async search(query: string): Promise<EntitySearchResponse> {
     try {
@@ -60,29 +82,27 @@ export const api = {
     }
   },
 
-  /** GET /api/chat?q= — RAG chat; returns answer, sources, triples */
-  async chat(query: string): Promise<ChatResponse> {
-    try {
-      const res = await fetch(
-        `${API_BASE_URL}/api/chat?q=${encodeURIComponent(query.trim())}`
-      );
-      if (!res.ok) throw new Error('Network response was not ok');
-      const data = await res.json();
-      return {
-        answer: data.answer ?? '',
-        sources: Array.isArray(data.sources) ? data.sources : [],
-        triples: Array.isArray(data.triples) ? data.triples : [],
-      };
-    } catch (error) {
-      console.warn('Backend unreachable, using mock data for /chat');
-      await delay(1500);
-      return {
-        answer:
-          "Based on the available records, there is a documented pattern of travel between Teterboro and Palm Beach during that timeframe [1]. Financial records also indicate significant offshore wire transfers labeled as 'Consulting Services' [2]. Furthermore, visitor logs from the New Mexico property show extended stays by unidentified corporate vehicles [3].\n\nThis suggests a coordinated logistical network supporting these movements.",
-        sources: [],
-        triples: [],
-      };
+  /** GET /api/chat?q= — RAG chat; returns answer, sources, triples. Requires accessToken (JWT). Optional sessionId to persist turn. */
+  async chat(query: string, accessToken: string | null): Promise<ChatResponse> {
+    if (!accessToken) {
+      throw new Error('Sign in to ask a question.');
     }
+    const params = new URLSearchParams({ q: query.trim() });
+    const res = await fetch(`${API_BASE_URL}/api/chat?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (res.status === 401) {
+      throw new Error('Session expired or invalid. Please sign in again.');
+    }
+    if (!res.ok) throw new Error('Network response was not ok');
+    const data = await res.json();
+    return {
+      answer: data.answer ?? '',
+      sources: Array.isArray(data.sources) ? data.sources : [],
+      triples: Array.isArray(data.triples) ? data.triples : [],
+    };
   },
 
   /** GET /api/document/{doc_id}/text — full document text for modal */
@@ -90,5 +110,31 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/api/document/${encodeURIComponent(doc_id)}/text`);
     if (!res.ok) throw new Error(res.status === 404 ? 'Document not found' : 'Network response was not ok');
     return res.json();
+  },
+
+  /** GET /api/stats — document, triple, chunk, actor counts */
+  async getStats(): Promise<StatsResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/stats`);
+    if (!res.ok) throw new Error('Network response was not ok');
+    return res.json();
+  },
+
+  /** GET /api/graph — nodes and edges for relationship graph */
+  async getGraph(params: GetGraphParams = {}): Promise<GraphResponse> {
+    const sp = new URLSearchParams();
+    if (params.entity != null && params.entity !== '') sp.set('entity', params.entity);
+    if (params.date_from != null && params.date_from !== '') sp.set('date_from', params.date_from);
+    if (params.date_to != null && params.date_to !== '') sp.set('date_to', params.date_to);
+    if (params.keywords != null && params.keywords !== '') sp.set('keywords', params.keywords);
+    if (params.limit != null) sp.set('limit', String(params.limit));
+    const qs = sp.toString();
+    const url = `${API_BASE_URL}/api/graph${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Network response was not ok');
+    const data = await res.json();
+    return {
+      nodes: Array.isArray(data.nodes) ? data.nodes : [],
+      edges: Array.isArray(data.edges) ? data.edges : [],
+    };
   },
 };
