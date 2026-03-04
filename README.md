@@ -2,6 +2,8 @@
 
 A research tool that lets you ask natural-language questions over a document corpus and get answers with direct citations to source documents. It combines semantic search, structured relationship data, and an LLM to produce grounded, sourced responses.
 
+**Try it here:** [epsteinfilerag.vercel.app](https://epsteinfilerag.vercel.app)
+
 ## Features
 
 - **Q&A with citations** — Ask questions in plain language; answers include source documents and structured facts (actor–action–target triples) you can click through.
