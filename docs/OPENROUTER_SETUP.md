@@ -66,7 +66,6 @@ OpenRouter uses **slash IDs** like `provider/model-name`. The backend sends this
 2. Add or set these lines. Use **your** OpenRouter API key and the model ID you copied:
 
 ```env
-LLM_PROVIDER=openai_compatible
 LLM_BASE_URL=https://openrouter.ai/api/v1
 LLM_MODEL=meta-llama/llama-3.3-70b-instruct
 LLM_API_KEY=sk-or-v1-paste-your-key-here
@@ -78,8 +77,7 @@ LLM_API_KEY=sk-or-v1-paste-your-key-here
 
 | Variable | Value | Why |
 |----------|--------|-----|
-| `LLM_PROVIDER` | `openai_compatible` | Tells the app to use the generic “OpenAI-compatible” path in `llm_generation.py` instead of calling Anthropic. That path uses `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY`. |
-| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | Root URL of OpenRouter’s API. The `openai` client sends requests here (e.g. `POST .../chat/completions`). Same format as OpenAI, so one code path fits. |
+| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | Root URL of OpenRouter’s API. The `openai` client sends requests here (e.g. `POST .../chat/completions`). Same format as OpenAI. |
 | `LLM_MODEL` | `meta-llama/llama-3.3-70b-instruct` | Exact model ID OpenRouter uses to route and bill. Must match a model on their site. |
 | `LLM_API_KEY` | `sk-or-v1-...` | Your OpenRouter key. The client sends it as `Authorization: Bearer <key>` so OpenRouter knows who you are and which credits to use. |
 
@@ -112,7 +110,7 @@ The backend reads env vars when it starts. Changing `.env` doesn’t affect an a
 
 **“LLM_BASE_URL or LLM_MODEL is not set”**
 
-- Ensure `backend/.env` exists and has `LLM_PROVIDER=openai_compatible`, `LLM_BASE_URL=...`, and `LLM_MODEL=...` with no typos.
+- Ensure `backend/.env` exists and has `LLM_BASE_URL=...` and `LLM_MODEL=...` with no typos.
 - Ensure you restarted the backend after editing `.env`.
 
 **401 Unauthorized or invalid API key**
@@ -136,8 +134,8 @@ The backend reads env vars when it starts. Changing `.env` doesn’t affect an a
 - [ ] API key created and copied
 - [ ] Credits added (for paid Llama 3.2/3.3)
 - [ ] Model ID copied from [openrouter.ai/models](https://openrouter.ai/models)
-- [ ] `backend/.env` has `LLM_PROVIDER=openai_compatible`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`
+- [ ] `backend/.env` has `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`
 - [ ] Backend restarted
 - [ ] One chat request sent and answered
 
-After this, all chat requests that go through your backend will use OpenRouter and the Llama model you chose until you change the env vars or switch back to `LLM_PROVIDER=anthropic`.
+After this, all chat requests that go through your backend will use OpenRouter and the Llama model you chose until you change the env vars.

@@ -6,10 +6,8 @@ This guide explains how to switch the chat from Claude to Llama 3.2 or 3.3 so it
 
 ## Overview
 
-- **Current default:** Chat uses Anthropic Claude (Sonnet) when `LLM_PROVIDER=anthropic`.
-- **To use Llama:** Set `LLM_PROVIDER=openai_compatible` and configure `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY` for a provider that serves Llama (e.g. Groq or OpenRouter).
-
-No code changes are required; only environment variables.
+- Chat uses an OpenAI-compatible API. Set `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY` for your provider (e.g. OpenRouter or Groq for Llama 3.2/3.3).
+- No code changes are required; only environment variables.
 
 ---
 
@@ -45,15 +43,12 @@ Check [Groq’s model list](https://console.groq.com/docs/models) for the latest
 2. Set or add these lines (replace the key with your Groq API key):
 
 ```env
-LLM_PROVIDER=openai_compatible
 LLM_BASE_URL=https://api.groq.com/openai/v1
 LLM_MODEL=llama-3.3-70b-versatile
 LLM_API_KEY=gsk_your_groq_api_key_here
 ```
 
-3. **Optional:** If you no longer need Claude for this app, you can leave `ANTHROPIC_API_KEY` unset or remove it. If you keep it, you can switch back by setting `LLM_PROVIDER=anthropic` and restarting.
-
-4. Restart the backend (e.g. stop and run `uvicorn` again).
+3. Restart the backend (e.g. stop and run `uvicorn` again).
 
 **Production / deployed backend**
 
@@ -95,7 +90,6 @@ Browse [OpenRouter models](https://openrouter.ai/models) and copy the exact mode
 In `backend/.env` (or your production env):
 
 ```env
-LLM_PROVIDER=openai_compatible
 LLM_BASE_URL=https://openrouter.ai/api/v1
 LLM_MODEL=meta-llama/llama-3.3-70b-instruct
 LLM_API_KEY=sk-or-v1-your_openrouter_key_here
@@ -113,7 +107,6 @@ Wherever the **backend** runs (VPS, Railway, Render, Fly.io, Docker, etc.), set 
 
 1. Open your project → **Variables** (or **Environment**).
 2. Add or edit:
-   - `LLM_PROVIDER` = `openai_compatible`
    - `LLM_BASE_URL` = `https://api.groq.com/openai/v1` (Groq) or `https://openrouter.ai/api/v1` (OpenRouter)
    - `LLM_MODEL` = e.g. `llama-3.3-70b-versatile` (Groq) or `meta-llama/llama-3.3-70b-instruct` (OpenRouter)
    - `LLM_API_KEY` = your Groq or OpenRouter API key
@@ -124,8 +117,7 @@ Wherever the **backend** runs (VPS, Railway, Render, Fly.io, Docker, etc.), set 
 Pass env in `docker run` or in a `.env` file used by Compose:
 
 ```bash
-docker run -e LLM_PROVIDER=openai_compatible \
-  -e LLM_BASE_URL=https://api.groq.com/openai/v1 \
+docker run -e LLM_BASE_URL=https://api.groq.com/openai/v1 \
   -e LLM_MODEL=llama-3.3-70b-versatile \
   -e LLM_API_KEY=gsk_... \
   ...
@@ -135,7 +127,6 @@ Or in `docker-compose.yml` under the backend service:
 
 ```yaml
 environment:
-  - LLM_PROVIDER=openai_compatible
   - LLM_BASE_URL=https://api.groq.com/openai/v1
   - LLM_MODEL=llama-3.3-70b-versatile
   - LLM_API_KEY=${LLM_API_KEY}
@@ -148,7 +139,6 @@ Use secrets or a vault for `LLM_API_KEY` in production; do not hardcode.
 Export before starting the app, or put in a file loaded by your process (e.g. `backend/.env` on the server):
 
 ```bash
-export LLM_PROVIDER=openai_compatible
 export LLM_BASE_URL=https://api.groq.com/openai/v1
 export LLM_MODEL=llama-3.3-70b-versatile
 export LLM_API_KEY=gsk_your_key
@@ -156,23 +146,9 @@ export LLM_API_KEY=gsk_your_key
 
 ---
 
-## Switching back to Claude
-
-To use Claude again:
-
-1. Set in `.env` or production env:
-   - `LLM_PROVIDER=anthropic`
-   - `ANTHROPIC_API_KEY` = your Anthropic key
-   - `ANTHROPIC_MODEL` = `sonnet` (or `opus` / `haiku` / concrete ID)
-2. You can leave `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY` set; they are only used when `LLM_PROVIDER=openai_compatible`.
-3. Restart the backend (or redeploy).
-
----
-
 ## Checklist summary
 
 - [ ] Get API key from Groq or OpenRouter.
-- [ ] Set `LLM_PROVIDER=openai_compatible`.
 - [ ] Set `LLM_BASE_URL` (Groq: `https://api.groq.com/openai/v1`, OpenRouter: `https://openrouter.ai/api/v1`).
 - [ ] Set `LLM_MODEL` to the exact model ID (e.g. `llama-3.3-70b-versatile` for Groq).
 - [ ] Set `LLM_API_KEY` to your key.

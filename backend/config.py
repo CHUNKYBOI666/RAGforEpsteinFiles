@@ -1,5 +1,5 @@
 # Environment variables, model names, chunk sizes — env only, no hardcoded credentials.
-# Use: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
+# Use: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY, LLM_BASE_URL, LLM_MODEL, etc.
 import os
 from pathlib import Path
 
@@ -28,16 +28,7 @@ SQLITE_DB_PATH = (
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 
-# LLM: provider choice and provider-specific settings.
-# LLM_PROVIDER: "anthropic" (Claude) or "openai_compatible" (Groq, Together, OpenRouter, vLLM, Ollama, etc.).
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
-
-# Anthropic Claude (when LLM_PROVIDER=anthropic). ANTHROPIC_MODEL can be an alias (sonnet, opus, haiku) or a concrete model ID.
-# Aliases are resolved once at first use via Models API and cached for the process.
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "sonnet")
-
-# LLM API (when LLM_PROVIDER=openai_compatible). Base URL and model name; API key required by some providers (Groq, Together, OpenRouter), optional for local (e.g. Ollama).
+# LLM (OpenAI-compatible: OpenRouter, Groq, Together, vLLM, Ollama, etc.). Base URL and model; API key required by some providers, optional for local (e.g. Ollama).
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "").strip()
 LLM_MODEL = os.getenv("LLM_MODEL", "").strip()
 LLM_API_KEY = os.getenv("LLM_API_KEY", "").strip()

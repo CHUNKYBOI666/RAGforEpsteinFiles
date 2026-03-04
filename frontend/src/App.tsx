@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network, LogOut } from 'lucide-react';
-import { CrypticBackground } from './components/CrypticBackground';
 import { AuthModal } from './components/AuthModal';
 import { EvidenceCard } from './components/EvidenceCard';
 import { RelationshipGraph } from './components/RelationshipGraph';
@@ -27,6 +26,10 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
 
 const DATE_RANGE_MIN = 1980;
 const DATE_RANGE_MAX = 2025;
+
+/** Intro: show epsteinGIF for one loop, then fade to ascii background. Tune to match GIF single-loop length. */
+const EPSTEIN_INTRO_DURATION_MS = 5000;
+const INTRO_FADE_DURATION_MS = 2500;
 
 export default function App() {
   const { user, accessToken, signInWithGoogle, signOut, loading: authLoading } = useAuth();
@@ -72,9 +75,28 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const evidencePanelScrollRef = useRef<HTMLDivElement>(null);
 
+  // Intro: epsteinGIF once, then fade to ascii background
+  type IntroPhase = 'intro' | 'fading' | 'done';
+  const [introPhase, setIntroPhase] = useState<IntroPhase>('intro');
+  const introTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (introPhase !== 'intro') return;
+    introTimerRef.current = setTimeout(() => {
+      setIntroPhase('fading');
+      introTimerRef.current = setTimeout(() => {
+        setIntroPhase('done');
+        introTimerRef.current = null;
+      }, INTRO_FADE_DURATION_MS);
+    }, EPSTEIN_INTRO_DURATION_MS);
+    return () => {
+      if (introTimerRef.current) clearTimeout(introTimerRef.current);
+    };
+  }, [introPhase]);
 
   useEffect(() => {
     if (hasSearched) {
@@ -82,7 +104,30 @@ export default function App() {
     }
   }, [answer, evidence, triples, entityResults, hasSearched]);
 
-  // Fetch stats when in graph mode (for sidebar)
+  // Fetch stats on mount (for hero doc count), with retries if backend is starting
+  useEffect(() => {
+    let cancelled = false;
+    const fetchWithRetry = (attempt = 0, maxAttempts = 3) => {
+      if (cancelled) return;
+      api
+        .getStats()
+        .then((data) => {
+          if (!cancelled) setStats(data);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (attempt < maxAttempts - 1) {
+            setTimeout(() => fetchWithRetry(attempt + 1, maxAttempts), 2000);
+          } else {
+            setStats(null);
+          }
+        });
+    };
+    fetchWithRetry();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   useEffect(() => {
     if (mode === 'graph') {
       api.getStats().then(setStats).catch(() => setStats(null));
@@ -271,16 +316,56 @@ export default function App() {
 
   return (
     <div className="relative h-screen min-h-0 bg-zinc-950 text-zinc-200 font-sans overflow-hidden flex flex-col">
-      <CrypticBackground />
+      {/* Intro: epsteinGIF (one loop) then fade to ascii background */}
+      {(introPhase === 'intro' || introPhase === 'fading') && (
+        <motion.div
+          className="fixed inset-0 z-0 pointer-events-none bg-center bg-no-repeat bg-cover"
+          style={{ backgroundImage: "url('/epsteinGIF.gif')" }}
+          initial={{ opacity: 1 }}
+          animate={{ opacity: introPhase === 'fading' ? 0 : 1 }}
+          transition={{ duration: INTRO_FADE_DURATION_MS / 1000 }}
+          aria-hidden
+        />
+      )}
+      <motion.div
+        className="fixed inset-0 z-0 pointer-events-none bg-center bg-no-repeat bg-cover"
+        style={{ backgroundImage: "url('/ascii-animation.gif')" }}
+        initial={false}
+        animate={{ opacity: introPhase === 'intro' ? 0 : 1 }}
+        transition={{ duration: INTRO_FADE_DURATION_MS / 1000 }}
+        aria-hidden
+      />
+      <div className="fixed inset-0 z-0 pointer-events-none bg-zinc-950/60" aria-hidden />
 
       {/* Header — fixed at top, never shrinks */}
       <header className="sticky top-0 z-20 shrink-0 flex items-center justify-between p-6 border-b border-zinc-800/50 bg-zinc-950/50 backdrop-blur-sm">
-        <div className="flex items-center space-x-3">
-          <ShieldAlert className="w-6 h-6 text-zinc-400" />
-          <h1 className="font-serif text-xl tracking-widest uppercase text-zinc-100 font-semibold">
+        <button
+          type="button"
+          onClick={() => {
+            if (introTimerRef.current) {
+              clearTimeout(introTimerRef.current);
+              introTimerRef.current = null;
+            }
+            setHasSearched(false);
+            setAnswer('');
+            setEvidence([]);
+            setTriples([]);
+            setActiveQuery('');
+            setQuery('');
+            setEntityResults([]);
+            setSelectedDocId(null);
+            setIntroPhase('intro');
+            setMode('chat');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="flex items-center space-x-3 rounded-md text-zinc-100 hover:text-white hover:bg-zinc-800/50 transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-zinc-950 -m-2 p-2"
+          aria-label="Go to home and restart"
+        >
+          <ShieldAlert className="w-6 h-6 text-zinc-400 shrink-0" aria-hidden />
+          <h1 className="font-serif text-xl tracking-widest uppercase font-semibold">
             The Archive
           </h1>
-        </div>
+        </button>
 
         <div className="flex items-center gap-4">
           {user ? (
@@ -538,7 +623,7 @@ export default function App() {
               className="flex-1 flex flex-col items-center justify-center p-6 max-w-3xl mx-auto w-full"
             >
               <h2 className="font-serif text-4xl md:text-5xl text-center mb-8 text-zinc-100 tracking-tight">
-                Uncover the truth.
+                Uncover the Epstein File
               </h2>
 
               <form onSubmit={handleSearch} className="w-full relative group">
@@ -571,7 +656,6 @@ export default function App() {
 
               {mode === 'chat' && !user && !authLoading && (
                 <div className="mt-4 flex items-center justify-center gap-3 text-sm">
-                  <span className="text-zinc-500 font-mono">Sign in to ask a question.</span>
                   <button
                     type="button"
                     onClick={() => setShowAuthModal(true)}
@@ -582,12 +666,10 @@ export default function App() {
                 </div>
               )}
 
-              <div className="mt-8 flex gap-4 text-xs font-mono text-zinc-500">
-                <span>SYSTEM: ONLINE</span>
-                <span>|</span>
-                <span>INDEX: 482,109 DOCS</span>
-                <span>|</span>
-                <span>CLEARANCE: LEVEL 4</span>
+              <div className="mt-8 text-xs font-mono text-zinc-500">
+                <span>
+                  INDEX: {stats?.document_count != null ? stats.document_count.toLocaleString() : '—'} DOCS
+                </span>
               </div>
             </motion.div>
           ) : (
