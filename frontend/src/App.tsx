@@ -229,7 +229,7 @@ export default function App() {
     if (mode === 'graph') return;
     if (!query.trim() || isSearching) return;
 
-    if (mode === 'chat' && !user) {
+    if (!user) {
       setShowAuthModal(true);
       return;
     }
@@ -265,6 +265,10 @@ export default function App() {
 
   const handleLoadGraph = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
     if (graphLoading) return;
     setGraphLoading(true);
     setSelectedGraphNodeId(null);
@@ -402,7 +406,13 @@ export default function App() {
             Synthesize
           </button>
           <button
-            onClick={() => setMode('search')}
+            onClick={() => {
+              if (!user) {
+                setShowAuthModal(true);
+                return;
+              }
+              setMode('search');
+            }}
             className={`flex items-center px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
               mode === 'search' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
             }`}
@@ -411,7 +421,13 @@ export default function App() {
             Raw Search
           </button>
           <button
-            onClick={() => setMode('graph')}
+            onClick={() => {
+              if (!user) {
+                setShowAuthModal(true);
+                return;
+              }
+              setMode('graph');
+            }}
             className={`flex items-center px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
               mode === 'graph' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
             }`}
@@ -623,7 +639,7 @@ export default function App() {
               className="flex-1 flex flex-col items-center justify-center p-6 max-w-3xl mx-auto w-full"
             >
               <h2 className="font-serif text-4xl md:text-5xl text-center mb-8 text-zinc-100 tracking-tight">
-                Uncover the Epstein File
+                Search The Epstein Files
               </h2>
 
               <form onSubmit={handleSearch} className="w-full relative group">
@@ -639,8 +655,8 @@ export default function App() {
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder={
                       mode === 'chat'
-                        ? 'Ask a question about the records...'
-                        : 'Search entity names...'
+                        ? 'e.g. Who was involved with the island? Answers cite source documents.'
+                        : 'e.g. Type a person or entity name to find relationships'
                     }
                     className="flex-1 bg-transparent border-none outline-none text-zinc-100 placeholder-zinc-600 py-4 px-2 text-lg"
                   />
@@ -765,8 +781,8 @@ export default function App() {
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder={
                           mode === 'chat'
-                            ? 'Dig deeper...'
-                            : 'Search entity names...'
+                            ? 'Ask a follow-up or new question...'
+                            : 'e.g. Type a person or entity name to find relationships'
                         }
                         className="flex-1 bg-transparent border-none outline-none text-zinc-200 placeholder-zinc-600 py-3 px-4"
                       />
