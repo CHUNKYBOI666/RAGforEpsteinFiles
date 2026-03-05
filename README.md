@@ -2,7 +2,7 @@
 
 A **conversational research tool** over a document corpus: ask natural-language questions and get answers with direct citations to source documents. It combines **semantic (vector) search**, **structured relationship data** (actor–action–target triples), and an **LLM** to produce grounded, sourced responses—like talking to a researcher who has read every document and always shows their work.
 
-**Try it here:** [epsteinfilerag.vercel.app](https://epsteinfilerag.vercel.app)
+**Try it here:** 
 
 ---
 
