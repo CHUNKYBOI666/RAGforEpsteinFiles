@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network, LogOut } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 import { AuthModal } from './components/AuthModal';
 import { EvidenceCard } from './components/EvidenceCard';
 import { RelationshipGraph } from './components/RelationshipGraph';
@@ -952,6 +953,7 @@ export default function App() {
         onClose={() => setShowAuthModal(false)}
         onSignInWithGoogle={signInWithGoogle}
       />
+      <Analytics />
     </div>
   );
 }
