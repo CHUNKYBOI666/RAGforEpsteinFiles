@@ -30,9 +30,9 @@ export function AuthModal({ isOpen, onClose, onSignInWithGoogle }: AuthModalProp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm overscroll-contain" onClick={onClose}>
       <div
-        className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-sm p-6"
+        className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-sm p-6 mx-2"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -53,7 +53,7 @@ export function AuthModal({ isOpen, onClose, onSignInWithGoogle }: AuthModalProp
             type="button"
             onClick={handleGoogleSignIn}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 hover:bg-zinc-700 disabled:opacity-50 font-mono text-sm transition-colors"
+            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 hover:bg-zinc-700 disabled:opacity-50 font-mono text-sm transition-colors min-h-[48px]"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden>
               <path

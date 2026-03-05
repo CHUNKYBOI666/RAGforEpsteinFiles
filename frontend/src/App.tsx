@@ -341,110 +341,138 @@ export default function App() {
       />
       <div className="fixed inset-0 z-0 pointer-events-none bg-zinc-950/60" aria-hidden />
 
-      {/* Header — fixed at top, never shrinks */}
-      <header className="sticky top-0 z-20 shrink-0 flex items-center justify-between p-6 border-b border-zinc-800/50 bg-zinc-950/50 backdrop-blur-sm">
-        <button
-          type="button"
-          onClick={() => {
-            if (introTimerRef.current) {
-              clearTimeout(introTimerRef.current);
-              introTimerRef.current = null;
-            }
-            setHasSearched(false);
-            setAnswer('');
-            setEvidence([]);
-            setTriples([]);
-            setActiveQuery('');
-            setQuery('');
-            setEntityResults([]);
-            setSelectedDocId(null);
-            setIntroPhase('intro');
-            setMode('chat');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          className="flex items-center space-x-3 rounded-md text-zinc-100 hover:text-white hover:bg-zinc-800/50 transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-zinc-950 -m-2 p-2"
-          aria-label="Go to home and restart"
-        >
-          <ShieldAlert className="w-6 h-6 text-zinc-400 shrink-0" aria-hidden />
-          <h1 className="font-serif text-xl tracking-widest uppercase font-semibold">
-            The Archive
-          </h1>
-        </button>
+      {/* Header — fixed at top, responsive on mobile */}
+      <header className="sticky top-0 z-20 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 p-4 sm:p-6 border-b border-zinc-800/50 bg-zinc-950/50 backdrop-blur-sm">
+        <div className="flex items-center justify-between sm:justify-start min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              if (introTimerRef.current) {
+                clearTimeout(introTimerRef.current);
+                introTimerRef.current = null;
+              }
+              setHasSearched(false);
+              setAnswer('');
+              setEvidence([]);
+              setTriples([]);
+              setActiveQuery('');
+              setQuery('');
+              setEntityResults([]);
+              setSelectedDocId(null);
+              setIntroPhase('intro');
+              setMode('chat');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="flex items-center space-x-2 sm:space-x-3 rounded-md text-zinc-100 hover:text-white hover:bg-zinc-800/50 transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-zinc-950 -m-2 p-2 min-h-[44px] min-w-[44px] sm:min-w-0"
+            aria-label="Go to home and restart"
+          >
+            <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-400 shrink-0" aria-hidden />
+            <h1 className="font-serif text-base sm:text-xl tracking-widest uppercase font-semibold truncate">
+              The Archive
+            </h1>
+          </button>
+          <div className="flex items-center gap-2 sm:hidden">
+            {user ? (
+              <button
+                type="button"
+                onClick={() => signOut()}
+                className="flex items-center justify-center p-2.5 rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors min-h-[44px] min-w-[44px]"
+                aria-label="Log out"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowAuthModal(true)}
+                className="px-4 py-2.5 rounded-md text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors min-h-[44px]"
+              >
+                Sign in
+              </button>
+            )}
+          </div>
+        </div>
 
-        <div className="flex items-center gap-4">
-          {user ? (
-            <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+          {user && (
+            <div className="hidden sm:flex items-center gap-3 text-sm">
               <span className="text-zinc-400 font-mono truncate max-w-[180px]" title={user.email ?? undefined}>
                 {user.email}
               </span>
               <button
                 type="button"
                 onClick={() => signOut()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors min-h-[44px]"
               >
                 <LogOut className="w-4 h-4" />
                 Log out
               </button>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowAuthModal(true)}
-              className="px-4 py-1.5 rounded-md text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
-            >
-              Sign in
-            </button>
           )}
-        <div className="flex bg-zinc-900/80 p-1 rounded-lg border border-zinc-800">
-          <button
-            onClick={() => setMode('chat')}
-            className={`flex items-center px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-              mode === 'chat' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            Synthesize
-          </button>
-          <button
-            onClick={() => {
-              if (!user) {
-                setShowAuthModal(true);
-                return;
-              }
-              setMode('search');
-            }}
-            className={`flex items-center px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-              mode === 'search' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Search className="w-4 h-4 mr-2" />
-            Raw Search
-          </button>
-          <button
-            onClick={() => {
-              if (!user) {
-                setShowAuthModal(true);
-                return;
-              }
-              setMode('graph');
-            }}
-            className={`flex items-center px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-              mode === 'graph' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Network className="w-4 h-4 mr-2" />
-            Network
-          </button>
-        </div>
+          {!user && (
+            <div className="hidden sm:block">
+              <button
+                type="button"
+                onClick={() => setShowAuthModal(true)}
+                className="px-4 py-2 rounded-md text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors min-h-[44px]"
+              >
+                Sign in
+              </button>
+            </div>
+          )}
+          <div className="flex bg-zinc-900/80 p-1 rounded-lg border border-zinc-800 overflow-x-auto scrollbar-hide">
+            <button
+              onClick={() => setMode('chat')}
+              className={`flex items-center shrink-0 px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-sm font-medium transition-all min-h-[44px] sm:min-h-0 ${
+                mode === 'chat' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              aria-label="Synthesize mode"
+            >
+              <MessageSquare className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Synthesize</span>
+            </button>
+            <button
+              onClick={() => {
+                if (!user) {
+                  setShowAuthModal(true);
+                  return;
+                }
+                setMode('search');
+              }}
+              className={`flex items-center shrink-0 px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-sm font-medium transition-all min-h-[44px] sm:min-h-0 ${
+                mode === 'search' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              aria-label="Raw Search mode"
+            >
+              <Search className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Raw Search</span>
+            </button>
+            <button
+              onClick={() => {
+                if (!user) {
+                  setShowAuthModal(true);
+                  return;
+                }
+                setMode('graph');
+              }}
+              className={`flex items-center shrink-0 px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-sm font-medium transition-all min-h-[44px] sm:min-h-0 ${
+                mode === 'graph' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              aria-label="Network graph mode"
+            >
+              <Network className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Network</span>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Content Area — min-h-0 so flex children can scroll */}
       <main className="relative z-10 flex-1 min-h-0 flex flex-col overflow-hidden">
         {mode === 'graph' ? (
-          <div className="flex-1 flex min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
             {/* Graph canvas */}
-            <div className="flex-1 min-w-0 min-h-0 relative bg-zinc-950/80 border-r border-zinc-800/50">
+            <div className="flex-1 min-w-0 min-h-[300px] md:min-h-0 relative bg-zinc-950/80 border-b md:border-b-0 md:border-r border-zinc-800/50">
               {graphLoading ? (
                 <div className="absolute inset-0 flex items-center justify-center text-zinc-400 font-mono text-sm">
                   <Loader2 className="w-5 h-5 animate-spin mr-2" />
@@ -472,8 +500,8 @@ export default function App() {
                 </p>
               )}
             </div>
-            {/* Graph sidebar: stats, filters, selected node triples */}
-            <div className="w-full md:w-[400px] lg:w-[420px] min-h-0 shrink-0 bg-zinc-950/90 backdrop-blur-xl flex flex-col border-l border-zinc-900 shadow-2xl z-20 overflow-hidden">
+            {/* Graph sidebar: stats, filters, selected node triples — stacks below graph on mobile */}
+            <div className="w-full md:w-[400px] lg:w-[420px] min-h-0 shrink-0 flex flex-col bg-zinc-950/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-zinc-900 shadow-2xl z-20 overflow-hidden">
               <div className="shrink-0 p-4 border-b border-zinc-800/50 bg-zinc-900/50 space-y-4">
                 <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest">
                   Graph settings
@@ -626,8 +654,8 @@ export default function App() {
             </div>
           </div>
         ) : (
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
         <AnimatePresence mode="wait">
           {!hasSearched ? (
             <motion.div
@@ -636,9 +664,9 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
               transition={{ duration: 0.5 }}
-              className="flex-1 flex flex-col items-center justify-center p-6 max-w-3xl mx-auto w-full"
+              className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 max-w-3xl mx-auto w-full"
             >
-              <h2 className="font-serif text-4xl md:text-5xl text-center mb-8 text-zinc-100 tracking-tight">
+              <h2 className="font-serif text-2xl sm:text-4xl md:text-5xl text-center mb-6 sm:mb-8 text-zinc-100 tracking-tight px-2">
                 Search The Epstein Files
               </h2>
 
@@ -658,7 +686,7 @@ export default function App() {
                         ? 'e.g. Who was involved with the island? Answers cite source documents.'
                         : 'e.g. Type a person or entity name to find relationships'
                     }
-                    className="flex-1 bg-transparent border-none outline-none text-zinc-100 placeholder-zinc-600 py-4 px-2 text-lg"
+                    className="flex-1 bg-transparent border-none outline-none text-zinc-100 placeholder-zinc-600 py-4 px-2 text-base sm:text-lg min-w-0"
                   />
                   <button
                     type="submit"
@@ -698,10 +726,10 @@ export default function App() {
             >
               {/* Left Column: Synthesis / Thread — scrollable independently */}
               <div className="flex-1 min-w-0 min-h-0 flex flex-col border-r border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md relative">
-                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-6 md:p-10 pb-28 scrollbar-visible">
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 md:p-10 pb-24 sm:pb-28 scrollbar-visible">
                   <div className="max-w-3xl mx-auto">
-                    <div className="mb-10">
-                      <h3 className="text-2xl font-serif text-zinc-100 mb-2">{activeQuery}</h3>
+                    <div className="mb-8 sm:mb-10">
+                      <h3 className="text-lg sm:text-2xl font-serif text-zinc-100 mb-2 break-words">{activeQuery}</h3>
                       <div className="h-px w-full bg-gradient-to-r from-zinc-800 to-transparent"></div>
                     </div>
 
@@ -772,7 +800,7 @@ export default function App() {
                 </div>
 
                 {/* Pinned Input */}
-                <div className="p-6 bg-gradient-to-t from-zinc-950 via-zinc-950 to-transparent absolute bottom-0 left-0 right-0">
+                <div className="p-4 sm:p-6 pb-safe bg-gradient-to-t from-zinc-950 via-zinc-950 to-transparent absolute bottom-0 left-0 right-0">
                   <form onSubmit={handleSearch} className="max-w-3xl mx-auto relative">
                     <div className="glass-panel rounded-xl flex items-center p-1.5 focus-within:border-zinc-600 focus-within:bg-zinc-900">
                       <input
@@ -798,8 +826,8 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Right Column: Evidence / Entity Panel — scrollable independently */}
-              <div className="w-full md:w-[400px] lg:w-[480px] min-h-0 shrink-0 bg-zinc-950/90 backdrop-blur-xl flex flex-col border-l border-zinc-900 shadow-2xl z-20">
+              {/* Right Column: Evidence / Entity Panel — scrollable independently, stacks below chat on mobile */}
+              <div className="w-full md:w-[400px] lg:w-[480px] min-h-[200px] md:min-h-0 shrink-0 flex flex-col bg-zinc-950/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-zinc-900 shadow-2xl z-20">
                 <div className="shrink-0 p-4 border-b border-zinc-800/50 flex items-center justify-between bg-zinc-900/50">
                   <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest flex items-center">
                     <FileText className="w-3.5 h-3.5 mr-2" />
@@ -880,14 +908,14 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm overscroll-contain"
             onClick={() => setSelectedDocId(null)}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col"
+              className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] sm:max-h-[85vh] flex flex-col m-4 sm:m-0"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between p-4 border-b border-zinc-800">

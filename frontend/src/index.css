@@ -38,6 +38,14 @@
   .glass-panel {
     @apply bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 shadow-2xl;
   }
+
+  /* Line clamp for evidence card snippets (mobile-friendly) */
+  .line-clamp-4 {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
 
 html, body, #root {
@@ -46,4 +54,12 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Safe area insets for notched devices */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }

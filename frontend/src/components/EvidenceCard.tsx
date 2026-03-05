@@ -14,18 +14,18 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ evidence, index, isA
     <div
       role={onClick ? 'button' : undefined}
       onClick={onClick ? () => onClick(evidence.doc_id) : undefined}
-      className={`p-4 rounded-lg border transition-all duration-300 ${
+      className={`p-3 sm:p-4 rounded-lg border transition-all duration-300 min-w-0 ${
         isActive
           ? 'bg-zinc-800/80 border-zinc-600 shadow-lg shadow-black/50'
           : 'bg-zinc-900/40 border-zinc-800/50 hover:bg-zinc-800/40'
       } ${onClick ? 'cursor-pointer' : ''}`}
     >
       <div className="flex justify-between items-start mb-3">
-        <div className="flex items-center space-x-2">
-          <span className="flex items-center justify-center w-5 h-5 rounded bg-zinc-800 text-xs font-mono text-zinc-400 border border-zinc-700">
+        <div className="flex items-center space-x-2 min-w-0">
+          <span className="flex items-center justify-center w-5 h-5 rounded bg-zinc-800 text-xs font-mono text-zinc-400 border border-zinc-700 shrink-0">
             {index + 1}
           </span>
-          <span className="font-mono text-xs font-semibold text-zinc-300 tracking-wider">
+          <span className="font-mono text-xs font-semibold text-zinc-300 tracking-wider truncate">
             {evidence.doc_id}
           </span>
         </div>
@@ -35,8 +35,8 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ evidence, index, isA
         </div>
       </div>
       
-      <div className="pl-3 border-l-2 border-zinc-700 mb-3">
-        <p className="text-sm text-zinc-300 leading-relaxed font-serif italic">
+      <div className="pl-3 border-l-2 border-zinc-700 mb-3 min-w-0">
+        <p className="text-sm text-zinc-300 leading-relaxed font-serif italic break-words line-clamp-4">
           "{evidence.snippet}"
         </p>
       </div>
