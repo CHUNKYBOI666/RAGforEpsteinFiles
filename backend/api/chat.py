@@ -1,11 +1,13 @@
 # /api/chat endpoint: runs full 6-stage retrieval pipeline, returns answer + sources + triples.
+# Optional session_id: persist user + assistant messages to that session.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from openai import OpenAI
+from supabase import Client, create_client
 
 from api.auth import RequireAuth
 
@@ -26,7 +28,59 @@ _spec.loader.exec_module(_backend_config)
 
 OPENAI_API_KEY = getattr(_backend_config, "OPENAI_API_KEY", "")
 OPENAI_EMBED_MODEL = getattr(_backend_config, "OPENAI_EMBED_MODEL", "text-embedding-3-small")
+SUPABASE_URL = getattr(_backend_config, "SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY = getattr(_backend_config, "SUPABASE_SERVICE_ROLE_KEY", "")
+
 from api.documents import get_metadata_for_doc_ids
+
+
+def _create_supabase_client() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+
+def _verify_session_owner(session_id: str, user_id) -> bool:
+    """Return True if session exists and belongs to user_id."""
+    client = _create_supabase_client()
+    resp = (
+        client.table("chat_sessions")
+        .select("id")
+        .eq("id", session_id)
+        .eq("user_id", str(user_id))
+        .limit(1)
+        .execute()
+    )
+    return bool(resp.data and len(resp.data) > 0)
+
+
+def _persist_turn(session_id: str, query: str, result: Dict[str, Any]) -> None:
+    from datetime import datetime, timezone
+
+    client = _create_supabase_client()
+    # Check if this is the first message (no messages yet) to set session title
+    msg_resp = client.table("chat_messages").select("id").eq("session_id", session_id).execute()
+    is_first = len(msg_resp.data or []) == 0
+
+    # Insert user message
+    client.table("chat_messages").insert(
+        {"session_id": session_id, "role": "user", "content": query, "sources": None, "triples": None}
+    ).execute()
+    # Insert assistant message
+    client.table("chat_messages").insert(
+        {
+            "session_id": session_id,
+            "role": "assistant",
+            "content": result.get("answer") or "",
+            "sources": result.get("sources") or [],
+            "triples": result.get("triples") or [],
+        }
+    ).execute()
+
+    # Update session updated_at; set title from first query if this was the first turn
+    now_iso = datetime.now(timezone.utc).isoformat()
+    update_payload: Dict[str, Any] = {"updated_at": now_iso}
+    if is_first and query:
+        update_payload["title"] = (query[:50] + "…") if len(query) > 50 else query
+    client.table("chat_sessions").update(update_payload).eq("id", session_id).execute()
 from retrieval.context_builder import build_context_prompt
 from retrieval.chunk_search import chunk_search
 from retrieval.llm_generation import generate_answer
@@ -155,11 +209,19 @@ router = APIRouter(tags=["chat"])
 @router.get("/chat")
 def api_chat(
     q: str = Query(..., description="Natural language question"),
+    session_id: Optional[str] = Query(None, description="If provided, persist this turn to the session"),
     user_id: RequireAuth = None,  # Injected by FastAPI (still required for access control)
 ):
-    """GET /api/chat?q= — run RAG pipeline, return answer + enriched sources + triples. Requires Authorization: Bearer <token>."""
+    """GET /api/chat?q= — run RAG pipeline, return answer + enriched sources + triples. Requires Authorization: Bearer <token>. Optional session_id to save the turn."""
+    if session_id and not _verify_session_owner(session_id, user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
     result = run_chat_pipeline(q)
     doc_ids = [s.get("doc_id") for s in result["sources"] if s.get("doc_id")]
     if doc_ids:
         result["sources"] = get_metadata_for_doc_ids(doc_ids)
+
+    if session_id:
+        _persist_turn(session_id, q.strip(), result)
+
     return result

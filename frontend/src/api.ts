@@ -1,4 +1,4 @@
-import type { ChatResponse, EntitySearchResponse, Evidence, GraphResponse, Source, StatsResponse } from './types';
+import type { ChatMessage, ChatResponse, ChatSession, EntitySearchResponse, Evidence, GraphResponse, Source, StatsResponse } from './types';
 
 export interface GetGraphParams {
   entity?: string;
@@ -83,11 +83,12 @@ export const api = {
   },
 
   /** GET /api/chat?q= — RAG chat; returns answer, sources, triples. Requires accessToken (JWT). Optional sessionId to persist turn. */
-  async chat(query: string, accessToken: string | null): Promise<ChatResponse> {
+  async chat(query: string, accessToken: string | null, sessionId?: string | null): Promise<ChatResponse> {
     if (!accessToken) {
       throw new Error('Sign in to ask a question.');
     }
     const params = new URLSearchParams({ q: query.trim() });
+    if (sessionId) params.set('session_id', sessionId);
     const res = await fetch(`${API_BASE_URL}/api/chat?${params.toString()}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -103,6 +104,58 @@ export const api = {
       sources: Array.isArray(data.sources) ? data.sources : [],
       triples: Array.isArray(data.triples) ? data.triples : [],
     };
+  },
+
+  /** POST /api/sessions — create a new chat session. Requires accessToken. */
+  async createSession(accessToken: string | null, title?: string): Promise<ChatSession> {
+    if (!accessToken) throw new Error('Sign in to create a session.');
+    const res = await fetch(`${API_BASE_URL}/api/sessions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(title != null ? { title } : {}),
+    });
+    if (res.status === 401) throw new Error('Session expired or invalid. Please sign in again.');
+    if (!res.ok) throw new Error('Network response was not ok');
+    return res.json();
+  },
+
+  /** GET /api/sessions — list sessions for the current user. Requires accessToken. */
+  async getSessions(accessToken: string | null): Promise<ChatSession[]> {
+    if (!accessToken) return [];
+    const res = await fetch(`${API_BASE_URL}/api/sessions`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.status === 401) throw new Error('Session expired or invalid. Please sign in again.');
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  },
+
+  /** GET /api/sessions/{id} — get one session and its messages. Requires accessToken. */
+  async getSession(sessionId: string, accessToken: string | null): Promise<{ session: ChatSession; messages: ChatMessage[] }> {
+    if (!accessToken) throw new Error('Sign in to load the session.');
+    const res = await fetch(`${API_BASE_URL}/api/sessions/${encodeURIComponent(sessionId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.status === 401) throw new Error('Session expired or invalid. Please sign in again.');
+    if (res.status === 404) throw new Error('Session not found.');
+    if (!res.ok) throw new Error('Network response was not ok');
+    return res.json();
+  },
+
+  /** DELETE /api/sessions/{id} — delete a session and its messages. Requires accessToken. */
+  async deleteSession(sessionId: string, accessToken: string | null): Promise<void> {
+    if (!accessToken) throw new Error('Sign in to delete a session.');
+    const res = await fetch(`${API_BASE_URL}/api/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.status === 401) throw new Error('Session expired or invalid. Please sign in again.');
+    if (res.status === 404) throw new Error('Session not found.');
+    if (!res.ok) throw new Error('Network response was not ok');
   },
 
   /** GET /api/document/{doc_id}/text — full document text for modal */

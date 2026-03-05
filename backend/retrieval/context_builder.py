@@ -9,15 +9,16 @@ from typing import Dict, List
 
 SYSTEM_INSTRUCTION = """You are an assistant answering questions about the Epstein document corpus.
 You are given:
+- A numbered list of sources (Source 1, Source 2, ...) and their doc_ids.
 - Retrieved document chunks, each labeled with its doc_id and index.
 - Structured facts (triples) extracted from documents, labeled with doc_id.
 
 Rules:
 - Answer the user's question using only the provided chunks and triples.
 - If the context is insufficient to answer, say you do not know based on the provided documents.
-- Cite document ids inline in square brackets wherever you use evidence, e.g. [DOC_ID] or [DOC_ID1, DOC_ID2].
+- Cite sources using only the source number in square brackets, e.g. [1] or [2]. Do not use doc_id in the answer.
 - Treat the structured triples as reliable facts; do not contradict them.
-- Do not invent doc_ids or facts that are not supported by the context.
+- Do not invent source numbers or facts that are not supported by the context.
 """
 
 MAX_CHUNKS = 10
@@ -137,12 +138,19 @@ def build_context_prompt(
     else:
         user_lines.append("- (none)")
 
-    user_lines.append("")
+    # Numbered source list so the LLM cites by [1], [2], ...
+    doc_ids = sorted(doc_ids_set)
+    if doc_ids:
+        user_lines.append("")
+        user_lines.append("Sources (cite by number in square brackets only, e.g. [1] or [2]):")
+        for num, doc_id in enumerate(doc_ids, start=1):
+            user_lines.append(f"  {num}. {doc_id}")
+        user_lines.append("")
+
     user_lines.append("Answer:")
 
     user_prompt = "\n".join(user_lines)
     prompt = system_prompt + "\n\n" + user_prompt
-    doc_ids = sorted(doc_ids_set)
 
     return {
         "prompt": prompt,

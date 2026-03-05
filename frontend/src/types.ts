@@ -37,6 +37,23 @@ export interface ChatResponse {
   triples: Triple[];
 }
 
+/** Chat session (saved conversation) from GET/POST /api/sessions */
+export interface ChatSession {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Single message in a session from GET /api/sessions/{id} */
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string | null;
+  sources: Source[] | null;
+  triples: Triple[] | null;
+  created_at: string;
+}
+
 /** Entity search result (GET /api/search) */
 export interface EntitySearchResult {
   canonical_name: string;

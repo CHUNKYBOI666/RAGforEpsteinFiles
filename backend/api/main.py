@@ -8,6 +8,7 @@ from api import documents as documents_module
 from api import entities as entities_module
 from api import graph as graph_module
 from api import search as search_module
+from api import sessions as sessions_module
 from api import stats as stats_module
 
 app = FastAPI(title="RAG API")
@@ -25,6 +26,7 @@ app.include_router(documents_module.router, prefix="/api")
 app.include_router(entities_module.router, prefix="/api")
 app.include_router(graph_module.router, prefix="/api")
 app.include_router(search_module.router, prefix="/api")
+app.include_router(sessions_module.router, prefix="/api")
 app.include_router(stats_module.router, prefix="/api")
 
 

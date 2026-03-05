@@ -1,14 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network, LogOut } from 'lucide-react';
 import { AuthModal } from './components/AuthModal';
+import { CitationPill } from './components/CitationPill';
 import { EvidenceCard } from './components/EvidenceCard';
 import { RelationshipGraph } from './components/RelationshipGraph';
 import { api, sourcesToEvidence } from './api';
 import { useAuth } from './contexts/AuthContext';
-import type { AppMode, Evidence, EntitySearchResult, GraphEdge, GraphNode, StatsResponse, Triple } from './types';
+import type { AppMode, ChatMessage, ChatSession, Evidence, EntitySearchResult, GraphEdge, GraphNode, StatsResponse, Triple } from './types';
 
 /* Markdown components: structure (headers, lists, bold) with dark theme */
 const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
@@ -45,6 +46,14 @@ export default function App() {
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [triples, setTriples] = useState<Triple[]>([]);
 
+  // Chat sessions: current session id (null = new chat), list, and messages for current session
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
+  const [highlightedEvidenceIndex, setHighlightedEvidenceIndex] = useState<number | null>(null);
+
   // Search mode: entity list (canonical_name + count)
   const [entityResults, setEntityResults] = useState<EntitySearchResult[]>([]);
 
@@ -74,11 +83,48 @@ export default function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const evidencePanelScrollRef = useRef<HTMLDivElement>(null);
+  const activeEvidenceCardRef = useRef<HTMLDivElement | null>(null);
 
   // Intro: epsteinGIF once, then fade to ascii background
   type IntroPhase = 'intro' | 'fading' | 'done';
   const [introPhase, setIntroPhase] = useState<IntroPhase>('intro');
   const introTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const effectiveTurnIndex = useMemo(() => {
+    if (chatMessages.length === 0) return null;
+    if (selectedTurnIndex !== null && chatMessages[selectedTurnIndex]?.role === 'assistant') {
+      return selectedTurnIndex;
+    }
+    for (let i = chatMessages.length - 1; i >= 0; i--) {
+      if (chatMessages[i].role === 'assistant') return i;
+    }
+    return null;
+  }, [chatMessages, selectedTurnIndex]);
+
+  const panelEvidence = useMemo(() => {
+    if (effectiveTurnIndex === null) return evidence;
+    return sourcesToEvidence(chatMessages[effectiveTurnIndex]?.sources ?? []);
+  }, [effectiveTurnIndex, chatMessages, evidence]);
+
+  const panelQuery = useMemo(() => {
+    if (effectiveTurnIndex === null) return null;
+    const prevIdx = effectiveTurnIndex - 1;
+    if (prevIdx >= 0 && chatMessages[prevIdx]?.role === 'user') {
+      return chatMessages[prevIdx].content;
+    }
+    return null;
+  }, [effectiveTurnIndex, chatMessages]);
+
+  // Clear citation highlight when turn or evidence list changes
+  useEffect(() => {
+    setHighlightedEvidenceIndex(null);
+  }, [effectiveTurnIndex, panelEvidence.length]);
+
+  // Scroll evidence panel to the highlighted card when user clicks a citation
+  useEffect(() => {
+    if (highlightedEvidenceIndex == null) return;
+    activeEvidenceCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [highlightedEvidenceIndex]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -134,10 +180,21 @@ export default function App() {
     }
   }, [mode]);
 
+  // Load session list when in chat mode and user is set
+  useEffect(() => {
+    if (mode !== 'chat' || !user || !accessToken) return;
+    setSessionsLoading(true);
+    api
+      .getSessions(accessToken)
+      .then(setSessions)
+      .catch(() => setSessions([]))
+      .finally(() => setSessionsLoading(false));
+  }, [mode, user, accessToken]);
+
   /* Reset evidence panel scroll to top when results change so first source is fully visible */
   useEffect(() => {
     evidencePanelScrollRef.current?.scrollTo(0, 0);
-  }, [evidence, entityResults]);
+  }, [panelEvidence, entityResults]);
 
   // Fetch document text when modal opens
   useEffect(() => {
@@ -236,7 +293,8 @@ export default function App() {
 
     setIsSearching(true);
     setHasSearched(true);
-    setActiveQuery(query);
+    const question = query.trim();
+    setActiveQuery(question);
     setAnswer('');
     setEvidence([]);
     setTriples([]);
@@ -244,11 +302,31 @@ export default function App() {
     setSelectedDocId(null);
 
     try {
-        if (mode === 'chat') {
-        const res = await api.chat(query, accessToken);
+      if (mode === 'chat') {
+        let sessionId = currentSessionId;
+        if (!sessionId) {
+          const newSession = await api.createSession(accessToken, 'New chat');
+          sessionId = newSession.id;
+          setCurrentSessionId(sessionId);
+          setSessions((prev) => [newSession, ...prev]);
+        }
+        const res = await api.chat(question, accessToken, sessionId);
         setAnswer(res.answer);
         setEvidence(sourcesToEvidence(res.sources));
         setTriples(res.triples ?? []);
+        const newAssistantIdx = chatMessages.length + 1;
+        setChatMessages((prev) => [
+          ...prev,
+          { role: 'user', content: question, sources: null, triples: null, created_at: new Date().toISOString() },
+          {
+            role: 'assistant',
+            content: res.answer,
+            sources: res.sources ?? [],
+            triples: res.triples ?? [],
+            created_at: new Date().toISOString(),
+          },
+        ]);
+        setSelectedTurnIndex(newAssistantIdx);
       } else {
         const res = await api.search(query);
         setEntityResults(res.results ?? []);
@@ -260,6 +338,73 @@ export default function App() {
     } finally {
       setIsSearching(false);
       setQuery('');
+    }
+  };
+
+  const handleNewChat = () => {
+    setCurrentSessionId(null);
+    setChatMessages([]);
+    setSelectedTurnIndex(null);
+    setHasSearched(false);
+    setAnswer('');
+    setEvidence([]);
+    setTriples([]);
+    setActiveQuery('');
+    setQuery('');
+    setSelectedDocId(null);
+    setMode('chat');
+    inputRef.current?.focus();
+  };
+
+  const handleSelectSession = async (sessionId: string) => {
+    if (!accessToken) return;
+    setCurrentSessionId(sessionId);
+    try {
+      const { messages } = await api.getSession(sessionId, accessToken);
+      setChatMessages(messages);
+      setHasSearched(messages.length > 0);
+      let lastAssistantIdx: number | null = null;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'assistant') { lastAssistantIdx = i; break; }
+      }
+      setSelectedTurnIndex(lastAssistantIdx);
+      const lastAssistant = lastAssistantIdx !== null ? messages[lastAssistantIdx] : null;
+      if (lastAssistant?.sources) {
+        setEvidence(sourcesToEvidence(lastAssistant.sources));
+      } else {
+        setEvidence([]);
+      }
+      if (lastAssistant?.triples) {
+        setTriples(lastAssistant.triples);
+      } else {
+        setTriples([]);
+      }
+      const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+      setActiveQuery(lastUser?.content ?? '');
+      setAnswer(lastAssistant?.content ?? '');
+    } catch {
+      setChatMessages([]);
+      setSelectedTurnIndex(null);
+      setHasSearched(false);
+      setEvidence([]);
+      setTriples([]);
+      setActiveQuery('');
+      setAnswer('');
+    }
+    setQuery('');
+  };
+
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!accessToken) return;
+    try {
+      await api.deleteSession(sessionId, accessToken);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (currentSessionId === sessionId) {
+        handleNewChat();
+      }
+    } catch (err) {
+      console.error('Failed to delete session', err);
     }
   };
 
@@ -291,31 +436,58 @@ export default function App() {
     }
   };
 
-  const renderAnswerWithCitations = (text: string) => {
+  type CitationRenderOptions = {
+    evidence: Evidence[];
+    onCitationClick?: (index: number) => void;
+    messageIndex?: number;
+    isSelectedTurn?: boolean;
+    highlightedEvidenceIndex: number | null;
+  };
+
+  const renderAnswerWithCitations = (text: string, options?: CitationRenderOptions) => {
     if (!text) return null;
+    const evidence = options?.evidence ?? [];
+    const onCitationClick = options?.onCitationClick;
+    const isSelectedTurn = options?.isSelectedTurn ?? true;
+    const highlightedEvidenceIndex = options?.highlightedEvidenceIndex ?? null;
+
     const parts = text.split(/(\[\d+\])/g);
-    return parts.map((part, i) => {
-      const match = part.match(/\[(\d+)\]/);
-      if (match) {
-        return (
-          <span
-            key={i}
-            className="inline-flex items-center justify-center w-5 h-5 rounded bg-zinc-800 text-xs font-mono text-zinc-300 border border-zinc-600 mx-1 cursor-pointer hover:bg-zinc-700 transition-colors align-middle"
-            title={`View Evidence ${match[1]}`}
-          >
-            {match[1]}
-          </span>
-        );
-      }
-      if (!part.trim()) return <span key={i} />;
-      return (
-        <div key={i} className="answer-markdown">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {part}
-          </ReactMarkdown>
-        </div>
-      );
-    });
+    const inlineMarkdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+      ...markdownComponents,
+      p: ({ children }) => <span className="inline">{children}</span>,
+    };
+
+    return (
+      <span className="citation-flow">
+        {parts.map((part, i) => {
+          const match = part.match(/\[(\d+)\]/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            const evidenceIndex = num - 1;
+            const ev = evidence[evidenceIndex];
+            const label = ev ? (ev.source_ref || ev.doc_id) : `Source ${num}`;
+            return (
+              <CitationPill
+                key={i}
+                index={evidenceIndex}
+                label={label}
+                citationNumber={num}
+                onClick={onCitationClick ? () => onCitationClick(evidenceIndex) : undefined}
+                isHighlighted={isSelectedTurn && highlightedEvidenceIndex === evidenceIndex}
+              />
+            );
+          }
+          if (!part.trim()) return <span key={i} />;
+          return (
+            <span key={i} className="inline align-baseline">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={inlineMarkdownComponents}>
+                {part}
+              </ReactMarkdown>
+            </span>
+          );
+        })}
+      </span>
+    );
   };
 
   return (
@@ -358,8 +530,10 @@ export default function App() {
               setActiveQuery('');
               setQuery('');
               setEntityResults([]);
-              setSelectedDocId(null);
-              setIntroPhase('intro');
+                              setSelectedDocId(null);
+                              setSelectedTurnIndex(null);
+                              setHighlightedEvidenceIndex(null);
+                              setIntroPhase('intro');
               setMode('chat');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
@@ -654,10 +828,63 @@ export default function App() {
             </div>
           </div>
         ) : (
-        <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Session sidebar: chat mode only, when user is signed in */}
+          {mode === 'chat' && user && (
+            <div className="hidden sm:flex w-56 lg:w-64 shrink-0 flex-col border-r border-zinc-800/50 bg-zinc-950/95 overflow-hidden">
+              <div className="shrink-0 p-3 border-b border-zinc-800/50">
+                <button
+                  type="button"
+                  onClick={handleNewChat}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 font-mono text-sm transition-colors"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  New chat
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-2">
+                {sessionsLoading ? (
+                  <div className="flex items-center justify-center py-4 text-zinc-500 font-mono text-xs">
+                    Loading...
+                  </div>
+                ) : sessions.length === 0 ? (
+                  <p className="text-zinc-500 font-mono text-xs px-2 py-4">No past chats</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {sessions.map((s) => (
+                      <li key={s.id}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => handleSelectSession(s.id)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSelectSession(s.id)}
+                          className={`group flex items-start gap-2 rounded-lg px-3 py-2.5 text-left cursor-pointer transition-colors ${
+                            currentSessionId === s.id ? 'bg-zinc-800 text-zinc-100' : 'hover:bg-zinc-800/60 text-zinc-300'
+                          }`}
+                        >
+                          <span className="flex-1 min-w-0 truncate text-sm font-mono" title={s.title ?? undefined}>
+                            {s.title || 'New chat'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSession(s.id, e)}
+                            className="shrink-0 p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label="Delete chat"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+        <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden min-w-0">
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
         <AnimatePresence mode="wait">
-          {!hasSearched ? (
+          {((mode === 'chat' && chatMessages.length === 0) || (mode !== 'chat' && !hasSearched)) ? (
             <motion.div
               key="home"
               initial={{ opacity: 0, y: 20 }}
@@ -728,72 +955,162 @@ export default function App() {
               <div className="flex-1 min-w-0 min-h-0 flex flex-col border-r border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md relative">
                 <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 md:p-10 pb-24 sm:pb-28 scrollbar-visible">
                   <div className="max-w-3xl mx-auto">
-                    <div className="mb-8 sm:mb-10">
-                      <h3 className="text-lg sm:text-2xl font-serif text-zinc-100 mb-2 break-words">{activeQuery}</h3>
-                      <div className="h-px w-full bg-gradient-to-r from-zinc-800 to-transparent"></div>
-                    </div>
-
-                    {isSearching ? (
-                      <div className="flex items-center space-x-3 text-zinc-400 font-mono text-sm animate-pulse">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Accessing secure archives...</span>
-                      </div>
-                    ) : (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="prose prose-invert prose-zinc max-w-none"
-                      >
-                        {mode === 'chat' ? (
-                          <>
-                            <div className="text-lg leading-relaxed text-zinc-300">
-                              {answer ? (
-                                renderAnswerWithCitations(answer)
+                    {mode === 'chat' && chatMessages.length > 0 ? (
+                      <>
+                        <div className="space-y-8 mb-8">
+                          {chatMessages.map((msg, idx) => (
+                            <div key={idx} className={msg.role === 'user' ? 'flex justify-end' : ''}>
+                              {msg.role === 'user' ? (
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => { if (chatMessages[idx + 1]?.role === 'assistant') setSelectedTurnIndex(idx + 1); }}
+                                  onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && chatMessages[idx + 1]?.role === 'assistant') { e.preventDefault(); setSelectedTurnIndex(idx + 1); } }}
+                                  className={`rounded-xl px-4 py-3 max-w-[85%] cursor-pointer transition-colors ${
+                                    effectiveTurnIndex === idx + 1 ? 'bg-zinc-700 ring-1 ring-zinc-500' : 'bg-zinc-800 hover:bg-zinc-700/60'
+                                  }`}
+                                  aria-label="View sources for this question"
+                                >
+                                  <p className="text-zinc-200 font-mono text-sm">{msg.content}</p>
+                                </div>
                               ) : (
-                                <span className="text-zinc-500 italic">
-                                  No answer was generated. See the source evidence below.
-                                </span>
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => setSelectedTurnIndex(idx)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedTurnIndex(idx); } }}
+                                  className={`prose prose-invert prose-zinc max-w-none cursor-pointer transition-all pl-3 -ml-3 border-l-2 ${
+                                    effectiveTurnIndex === idx ? 'border-zinc-500' : 'border-transparent hover:border-zinc-700'
+                                  }`}
+                                  aria-label="View sources for this answer"
+                                >
+                                  <div className="text-lg leading-relaxed text-zinc-300">
+                                    {msg.content ? (
+                                      renderAnswerWithCitations(msg.content, {
+                                        evidence: sourcesToEvidence(msg.sources ?? []),
+                                        onCitationClick: (index) => {
+                                          setSelectedTurnIndex(idx);
+                                          setHighlightedEvidenceIndex(index);
+                                        },
+                                        isSelectedTurn: effectiveTurnIndex === idx,
+                                        highlightedEvidenceIndex,
+                                      })
+                                    ) : (
+                                      <span className="text-zinc-500 italic">No answer generated.</span>
+                                    )}
+                                  </div>
+                                  {msg.triples && msg.triples.length > 0 && (
+                                    <div className="mt-6 pt-4 border-t border-zinc-800">
+                                      <h4 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-2">
+                                        Structured facts
+                                      </h4>
+                                      <ul className="space-y-2">
+                                        {msg.triples.map((t, i) => (
+                                          <li key={i} className="text-sm text-zinc-400 font-mono border-l-2 border-zinc-700 pl-3 py-0.5">
+                                            <span className="text-zinc-300">{t.actor}</span>
+                                            {' — '}
+                                            {t.action}
+                                            {t.target && (
+                                              <>
+                                                {' → '}
+                                                <span className="text-zinc-300">{t.target}</span>
+                                              </>
+                                            )}
+                                            {t.timestamp && (
+                                              <span className="text-zinc-500 ml-2">({t.timestamp})</span>
+                                            )}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
-                            {triples.length > 0 && (
-                              <div className="mt-10 pt-6 border-t border-zinc-800">
-                                <h4 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-                                  Structured facts
-                                </h4>
-                                <ul className="space-y-3">
-                                  {triples.map((t, i) => (
-                                    <li
-                                      key={i}
-                                      className="text-sm text-zinc-400 font-mono border-l-2 border-zinc-700 pl-3 py-1"
-                                    >
-                                      <span className="text-zinc-300">{t.actor}</span>
-                                      {' — '}
-                                      {t.action}
-                                      {t.target && (
-                                        <>
-                                          {' → '}
-                                          <span className="text-zinc-300">{t.target}</span>
-                                        </>
-                                      )}
-                                      {t.timestamp && (
-                                        <span className="text-zinc-500 ml-2">({t.timestamp})</span>
-                                      )}
-                                      {t.location && (
-                                        <span className="text-zinc-500 ml-2">@ {t.location}</span>
-                                      )}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <div className="text-zinc-400 font-mono text-sm">
-                            Found {entityResults.length} entity match
-                            {entityResults.length !== 1 ? 'es' : ''}. Review the panel.
+                          ))}
+                        </div>
+                        {isSearching && (
+                          <div className="flex items-center space-x-3 text-zinc-400 font-mono text-sm animate-pulse mb-6">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Accessing secure archives...</span>
                           </div>
                         )}
-                      </motion.div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mb-8 sm:mb-10">
+                          <h3 className="text-lg sm:text-2xl font-serif text-zinc-100 mb-2 break-words">{activeQuery}</h3>
+                          <div className="h-px w-full bg-gradient-to-r from-zinc-800 to-transparent"></div>
+                        </div>
+
+                        {isSearching ? (
+                          <div className="flex items-center space-x-3 text-zinc-400 font-mono text-sm animate-pulse">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Accessing secure archives...</span>
+                          </div>
+                        ) : (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="prose prose-invert prose-zinc max-w-none"
+                          >
+                            {mode === 'chat' ? (
+                              <>
+                                <div className="text-lg leading-relaxed text-zinc-300">
+                                  {answer ? (
+                                    renderAnswerWithCitations(answer, {
+                                      evidence,
+                                      onCitationClick: (index) => setHighlightedEvidenceIndex(index),
+                                      isSelectedTurn: true,
+                                      highlightedEvidenceIndex,
+                                    })
+                                  ) : (
+                                    <span className="text-zinc-500 italic">
+                                      No answer was generated. See the source evidence below.
+                                    </span>
+                                  )}
+                                </div>
+                                {triples.length > 0 && (
+                                  <div className="mt-10 pt-6 border-t border-zinc-800">
+                                    <h4 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+                                      Structured facts
+                                    </h4>
+                                    <ul className="space-y-3">
+                                      {triples.map((t, i) => (
+                                        <li
+                                          key={i}
+                                          className="text-sm text-zinc-400 font-mono border-l-2 border-zinc-700 pl-3 py-1"
+                                        >
+                                          <span className="text-zinc-300">{t.actor}</span>
+                                          {' — '}
+                                          {t.action}
+                                          {t.target && (
+                                            <>
+                                              {' → '}
+                                              <span className="text-zinc-300">{t.target}</span>
+                                            </>
+                                          )}
+                                          {t.timestamp && (
+                                            <span className="text-zinc-500 ml-2">({t.timestamp})</span>
+                                          )}
+                                          {t.location && (
+                                            <span className="text-zinc-500 ml-2">@ {t.location}</span>
+                                          )}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="text-zinc-400 font-mono text-sm">
+                                Found {entityResults.length} entity match
+                                {entityResults.length !== 1 ? 'es' : ''}. Review the panel.
+                              </div>
+                            )}
+                          </motion.div>
+                        )}
+                      </>
                     )}
                     <div ref={messagesEndRef} className="h-20" />
                   </div>
@@ -828,14 +1145,21 @@ export default function App() {
 
               {/* Right Column: Evidence / Entity Panel — scrollable independently, stacks below chat on mobile */}
               <div className="w-full md:w-[400px] lg:w-[480px] min-h-[200px] md:min-h-0 shrink-0 flex flex-col bg-zinc-950/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-zinc-900 shadow-2xl z-20">
-                <div className="shrink-0 p-4 border-b border-zinc-800/50 flex items-center justify-between bg-zinc-900/50">
-                  <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest flex items-center">
-                    <FileText className="w-3.5 h-3.5 mr-2" />
-                    {mode === 'chat' ? 'Source Evidence' : 'Entity matches'}
-                  </h3>
-                  <span className="text-xs font-mono text-zinc-600">
-                    {mode === 'chat' ? `${evidence.length} files` : `${entityResults.length} names`}
-                  </span>
+                <div className="shrink-0 p-4 border-b border-zinc-800/50 bg-zinc-900/50">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest flex items-center">
+                      <FileText className="w-3.5 h-3.5 mr-2" />
+                      {mode === 'chat' ? 'Source Evidence' : 'Entity matches'}
+                    </h3>
+                    <span className="text-xs font-mono text-zinc-600">
+                      {mode === 'chat' ? `${panelEvidence.length} files` : `${entityResults.length} names`}
+                    </span>
+                  </div>
+                  {mode === 'chat' && panelQuery && (
+                    <p className="mt-1.5 text-xs font-mono text-zinc-500 truncate" title={panelQuery}>
+                      {panelQuery}
+                    </p>
+                  )}
                 </div>
 
                 <div
@@ -852,10 +1176,11 @@ export default function App() {
                       ))}
                     </div>
                   ) : mode === 'chat' ? (
-                    evidence.length > 0 ? (
-                      evidence.map((item, idx) => (
+                    panelEvidence.length > 0 ? (
+                      panelEvidence.map((item, idx) => (
                         <motion.div
-                          key={`ev-${item.doc_id}-${idx}`}
+                          key={`ev-${effectiveTurnIndex}-${item.doc_id}-${idx}`}
+                          ref={idx === highlightedEvidenceIndex ? activeEvidenceCardRef : undefined}
                           initial={{ opacity: 0, x: 20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: idx * 0.1 }}
@@ -863,7 +1188,11 @@ export default function App() {
                           <EvidenceCard
                             evidence={item}
                             index={idx}
-                            onClick={setSelectedDocId}
+                            isActive={highlightedEvidenceIndex === idx}
+                            onClick={(doc_id) => {
+                              setHighlightedEvidenceIndex(null);
+                              setSelectedDocId(doc_id);
+                            }}
                           />
                         </motion.div>
                       ))
@@ -896,6 +1225,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
         </div>
         </div>
         )}
