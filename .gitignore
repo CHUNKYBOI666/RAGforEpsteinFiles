@@ -1,6 +1,7 @@
 .env
 *.zip
 .DS_Store
+LearningExperience.md
 
 # Backend
 backend/.venv/

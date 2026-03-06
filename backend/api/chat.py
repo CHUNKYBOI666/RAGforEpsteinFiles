@@ -1,5 +1,5 @@
 # /api/chat endpoint: runs full 6-stage retrieval pipeline, returns answer + sources + triples.
-# Optional session_id: persist user + assistant messages to that session.
+# Optional session_id: persist user + assistant messages to that anonymous session.
 
 from __future__ import annotations
 
@@ -9,9 +9,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 from openai import OpenAI
 from supabase import Client, create_client
 
-from api.auth import RequireAuth
+from api.auth import RequireDeviceId
 
-# Backend config (load config.py file, not config package) and retrieval stages
 import importlib.util
 import sys
 from pathlib import Path
@@ -38,14 +37,14 @@ def _create_supabase_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 
-def _verify_session_owner(session_id: str, user_id) -> bool:
-    """Return True if session exists and belongs to user_id."""
+def _verify_session_owner(session_id: str, device_id: str) -> bool:
+    """Return True if anonymous session exists and belongs to device_id."""
     client = _create_supabase_client()
     resp = (
-        client.table("chat_sessions")
+        client.table("chat_sessions_anonymous")
         .select("id")
         .eq("id", session_id)
-        .eq("user_id", str(user_id))
+        .eq("device_id", device_id)
         .limit(1)
         .execute()
     )
@@ -56,16 +55,13 @@ def _persist_turn(session_id: str, query: str, result: Dict[str, Any]) -> None:
     from datetime import datetime, timezone
 
     client = _create_supabase_client()
-    # Check if this is the first message (no messages yet) to set session title
-    msg_resp = client.table("chat_messages").select("id").eq("session_id", session_id).execute()
+    msg_resp = client.table("chat_messages_anonymous").select("id").eq("session_id", session_id).execute()
     is_first = len(msg_resp.data or []) == 0
 
-    # Insert user message
-    client.table("chat_messages").insert(
+    client.table("chat_messages_anonymous").insert(
         {"session_id": session_id, "role": "user", "content": query, "sources": None, "triples": None}
     ).execute()
-    # Insert assistant message
-    client.table("chat_messages").insert(
+    client.table("chat_messages_anonymous").insert(
         {
             "session_id": session_id,
             "role": "assistant",
@@ -75,12 +71,12 @@ def _persist_turn(session_id: str, query: str, result: Dict[str, Any]) -> None:
         }
     ).execute()
 
-    # Update session updated_at; set title from first query if this was the first turn
     now_iso = datetime.now(timezone.utc).isoformat()
     update_payload: Dict[str, Any] = {"updated_at": now_iso}
     if is_first and query:
-        update_payload["title"] = (query[:50] + "…") if len(query) > 50 else query
-    client.table("chat_sessions").update(update_payload).eq("id", session_id).execute()
+        update_payload["title"] = (query[:50] + "\u2026") if len(query) > 50 else query
+    client.table("chat_sessions_anonymous").update(update_payload).eq("id", session_id).execute()
+
 from retrieval.context_builder import build_context_prompt
 from retrieval.chunk_search import chunk_search
 from retrieval.llm_generation import generate_answer
@@ -153,42 +149,33 @@ def run_chat_pipeline(query: str) -> Dict[str, Any]:
             "triples": [],
         }
 
-    # Stage 1: query expansion
     search_terms = expand_query(query)
-
-    # Embed query for vector search (used in stages 2 and 3)
     query_embedding = _get_query_embedding(query)
 
-    # Stage 2: summary-level search + triple-based candidate expansion -> merged candidate doc_ids
     summary_doc_ids = summary_search(query_embedding, top_k=SUMMARY_TOP_K)
     try:
         triple_doc_ids = get_doc_ids_by_triple_terms(search_terms, top_k=TRIPLE_CANDIDATE_TOP_K)
     except Exception:
-        # If triple-based candidate expansion fails (e.g., RPC timeout), fall back to summary-only.
         triple_doc_ids = []
     candidate_doc_ids = _merge_and_cap_candidates(
         summary_doc_ids, triple_doc_ids, max_total=MAX_CANDIDATE_DOCS
     )
 
-    # Stage 3: chunk-level search within candidates
     chunks = chunk_search(
         query_embedding,
         candidate_doc_ids,
         top_k=CHUNK_TOP_K,
     )
 
-    # Stage 4: triple lookup (use expanded terms; doc_ids from chunks)
     doc_ids_for_triples = list({c.get("doc_id") for c in chunks if c.get("doc_id")})
     terms_for_triples = list(search_terms) if search_terms else [query]
     triples = triple_lookup(doc_ids_for_triples, terms_for_triples)
 
-    # Stage 5: context assembly
     context_result = build_context_prompt(query, chunks, triples)
     system_prompt = context_result["system_prompt"]
     user_prompt = context_result["user_prompt"]
     doc_ids = context_result["doc_ids"]
 
-    # Stage 6: LLM generation
     result = generate_answer(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
@@ -210,10 +197,11 @@ router = APIRouter(tags=["chat"])
 def api_chat(
     q: str = Query(..., description="Natural language question"),
     session_id: Optional[str] = Query(None, description="If provided, persist this turn to the session"),
-    user_id: RequireAuth = None,  # Injected by FastAPI (still required for access control)
+    device_id: RequireDeviceId = None,
 ):
-    """GET /api/chat?q= — run RAG pipeline, return answer + enriched sources + triples. Requires Authorization: Bearer <token>. Optional session_id to save the turn."""
-    if session_id and not _verify_session_owner(session_id, user_id):
+    """GET /api/chat?q= — run RAG pipeline, return answer + enriched sources + triples.
+    Requires X-Device-Id header. Optional session_id to save the turn."""
+    if session_id and not _verify_session_owner(session_id, device_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     result = run_chat_pipeline(q)

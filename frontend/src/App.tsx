@@ -2,16 +2,14 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network, LogOut } from 'lucide-react';
-import { AuthModal } from './components/AuthModal';
+import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network } from 'lucide-react';
 import { CitationPill } from './components/CitationPill';
 import { EvidenceCard } from './components/EvidenceCard';
 import { RelationshipGraph } from './components/RelationshipGraph';
 import { api, sourcesToEvidence } from './api';
-import { useAuth } from './contexts/AuthContext';
+import { getDeviceId } from './lib/deviceId';
 import type { AppMode, ChatMessage, ChatSession, Evidence, EntitySearchResult, GraphEdge, GraphNode, StatsResponse, Triple } from './types';
 
-/* Markdown components: structure (headers, lists, bold) with dark theme */
 const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
   p: ({ children }) => <p className="mb-3 last:mb-0 text-zinc-300 leading-relaxed">{children}</p>,
   h1: ({ children }) => <h1 className="text-2xl font-serif font-semibold text-zinc-100 mt-6 mb-2 first:mt-0">{children}</h1>,
@@ -28,25 +26,21 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
 const DATE_RANGE_MIN = 1980;
 const DATE_RANGE_MAX = 2025;
 
-/** Intro: show epsteinGIF for one loop, then fade to ascii background. Tune to match GIF single-loop length. */
 const EPSTEIN_INTRO_DURATION_MS = 5000;
 const INTRO_FADE_DURATION_MS = 2500;
 
 export default function App() {
-  const { user, accessToken, signInWithGoogle, signOut, loading: authLoading } = useAuth();
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const deviceId = useMemo(() => getDeviceId(), []);
   const [mode, setMode] = useState<AppMode>('chat');
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  // Chat results
   const [activeQuery, setActiveQuery] = useState('');
   const [answer, setAnswer] = useState<string>('');
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [triples, setTriples] = useState<Triple[]>([]);
 
-  // Chat sessions: current session id (null = new chat), list, and messages for current session
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -54,10 +48,8 @@ export default function App() {
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
   const [highlightedEvidenceIndex, setHighlightedEvidenceIndex] = useState<number | null>(null);
 
-  // Search mode: entity list (canonical_name + count)
   const [entityResults, setEntityResults] = useState<EntitySearchResult[]>([]);
 
-  // Graph mode: graph data, filters, selected node, stats
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
   const [graphLoading, setGraphLoading] = useState(false);
@@ -67,14 +59,12 @@ export default function App() {
   const [graphYearMax, setGraphYearMax] = useState(DATE_RANGE_MAX);
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [stats, setStats] = useState<StatsResponse | null>(null);
-  // Graph entity suggestions: preset list (loaded once) + filtered suggestions
   const [graphEntityPresetList, setGraphEntityPresetList] = useState<EntitySearchResult[]>([]);
   const [graphEntityPresetLoading, setGraphEntityPresetLoading] = useState(false);
   const [graphEntitySuggestions, setGraphEntitySuggestions] = useState<EntitySearchResult[]>([]);
   const [graphEntitySuggestionsOpen, setGraphEntitySuggestionsOpen] = useState(false);
   const graphEntityContainerRef = useRef<HTMLDivElement>(null);
 
-  // Document modal
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [documentText, setDocumentText] = useState<string | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
@@ -85,7 +75,6 @@ export default function App() {
   const evidencePanelScrollRef = useRef<HTMLDivElement>(null);
   const activeEvidenceCardRef = useRef<HTMLDivElement | null>(null);
 
-  // Intro: epsteinGIF once, then fade to ascii background
   type IntroPhase = 'intro' | 'fading' | 'done';
   const [introPhase, setIntroPhase] = useState<IntroPhase>('intro');
   const introTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -115,12 +104,10 @@ export default function App() {
     return null;
   }, [effectiveTurnIndex, chatMessages]);
 
-  // Clear citation highlight when turn or evidence list changes
   useEffect(() => {
     setHighlightedEvidenceIndex(null);
   }, [effectiveTurnIndex, panelEvidence.length]);
 
-  // Scroll evidence panel to the highlighted card when user clicks a citation
   useEffect(() => {
     if (highlightedEvidenceIndex == null) return;
     activeEvidenceCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -150,7 +137,6 @@ export default function App() {
     }
   }, [answer, evidence, triples, entityResults, hasSearched]);
 
-  // Fetch stats on mount (for hero doc count), with retries if backend is starting
   useEffect(() => {
     let cancelled = false;
     const fetchWithRetry = (attempt = 0, maxAttempts = 3) => {
@@ -174,29 +160,27 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
   useEffect(() => {
     if (mode === 'graph') {
       api.getStats().then(setStats).catch(() => setStats(null));
     }
   }, [mode]);
 
-  // Load session list when in chat mode and user is set
   useEffect(() => {
-    if (mode !== 'chat' || !user || !accessToken) return;
+    if (mode !== 'chat') return;
     setSessionsLoading(true);
     api
-      .getSessions(accessToken)
+      .getSessions(deviceId)
       .then(setSessions)
       .catch(() => setSessions([]))
       .finally(() => setSessionsLoading(false));
-  }, [mode, user, accessToken]);
+  }, [mode, deviceId]);
 
-  /* Reset evidence panel scroll to top when results change so first source is fully visible */
   useEffect(() => {
     evidencePanelScrollRef.current?.scrollTo(0, 0);
   }, [panelEvidence, entityResults]);
 
-  // Fetch document text when modal opens
   useEffect(() => {
     if (!selectedDocId) {
       setDocumentText(null);
@@ -218,7 +202,6 @@ export default function App() {
       .finally(() => setDocumentLoading(false));
   }, [selectedDocId]);
 
-  // Load preset entity list once when entering graph mode
   useEffect(() => {
     if (mode !== 'graph') return;
     setGraphEntityPresetLoading(true);
@@ -229,7 +212,6 @@ export default function App() {
       .finally(() => setGraphEntityPresetLoading(false));
   }, [mode]);
 
-  // Filter preset list on keystroke (instant); fallback to server search when preset has no match
   useEffect(() => {
     const trimmed = graphEntity.trim().toLowerCase();
     if (trimmed.length < 1) {
@@ -250,7 +232,6 @@ export default function App() {
       setGraphEntitySuggestionsOpen(true);
       return;
     }
-    // Fallback: preset capped or no match — call server search once
     if (trimmed.length >= 2) {
       api.search(graphEntity.trim()).then((res) => {
         const list = res.results ?? [];
@@ -263,7 +244,6 @@ export default function App() {
     }
   }, [graphEntity, graphEntityPresetList]);
 
-  // Click outside or Escape to close graph entity suggestions
   useEffect(() => {
     if (!graphEntitySuggestionsOpen) return;
     const handleClick = (e: MouseEvent) => {
@@ -286,11 +266,6 @@ export default function App() {
     if (mode === 'graph') return;
     if (!query.trim() || isSearching) return;
 
-    if (!user) {
-      setShowAuthModal(true);
-      return;
-    }
-
     setIsSearching(true);
     setHasSearched(true);
     const question = query.trim();
@@ -305,12 +280,12 @@ export default function App() {
       if (mode === 'chat') {
         let sessionId = currentSessionId;
         if (!sessionId) {
-          const newSession = await api.createSession(accessToken, 'New chat');
+          const newSession = await api.createSession(deviceId, 'New chat');
           sessionId = newSession.id;
           setCurrentSessionId(sessionId);
           setSessions((prev) => [newSession, ...prev]);
         }
-        const res = await api.chat(question, accessToken, sessionId);
+        const res = await api.chat(question, deviceId, sessionId);
         setAnswer(res.answer);
         setEvidence(sourcesToEvidence(res.sources));
         setTriples(res.triples ?? []);
@@ -327,14 +302,22 @@ export default function App() {
           },
         ]);
         setSelectedTurnIndex(newAssistantIdx);
+        if (sessionId && chatMessages.length === 0) {
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === sessionId
+                ? { ...s, title: question.length > 50 ? question.slice(0, 50) + '\u2026' : question }
+                : s
+            )
+          );
+        }
       } else {
         const res = await api.search(query);
         setEntityResults(res.results ?? []);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
-      const msg = error instanceof Error ? error.message : '';
-      setAnswer(msg?.includes('Sign in') ? msg : 'Error connecting to the archive. Please check your clearance and try again.');
+      setAnswer('Error connecting to the archive. Please check your clearance and try again.');
     } finally {
       setIsSearching(false);
       setQuery('');
@@ -357,10 +340,9 @@ export default function App() {
   };
 
   const handleSelectSession = async (sessionId: string) => {
-    if (!accessToken) return;
     setCurrentSessionId(sessionId);
     try {
-      const { messages } = await api.getSession(sessionId, accessToken);
+      const { messages } = await api.getSession(sessionId, deviceId);
       setChatMessages(messages);
       setHasSearched(messages.length > 0);
       let lastAssistantIdx: number | null = null;
@@ -396,9 +378,8 @@ export default function App() {
 
   const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!accessToken) return;
     try {
-      await api.deleteSession(sessionId, accessToken);
+      await api.deleteSession(sessionId, deviceId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       if (currentSessionId === sessionId) {
         handleNewChat();
@@ -410,10 +391,6 @@ export default function App() {
 
   const handleLoadGraph = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!user) {
-      setShowAuthModal(true);
-      return;
-    }
     if (graphLoading) return;
     setGraphLoading(true);
     setSelectedGraphNodeId(null);
@@ -492,7 +469,6 @@ export default function App() {
 
   return (
     <div className="relative h-screen min-h-0 bg-zinc-950 text-zinc-200 font-sans overflow-hidden flex flex-col">
-      {/* Intro: epsteinGIF (one loop) then fade to ascii background */}
       {(introPhase === 'intro' || introPhase === 'fading') && (
         <motion.div
           className="fixed inset-0 z-0 pointer-events-none bg-center bg-no-repeat bg-cover"
@@ -513,7 +489,6 @@ export default function App() {
       />
       <div className="fixed inset-0 z-0 pointer-events-none bg-zinc-950/60" aria-hidden />
 
-      {/* Header — fixed at top, responsive on mobile */}
       <header className="sticky top-0 z-20 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 p-4 sm:p-6 border-b border-zinc-800/50 bg-zinc-950/50 backdrop-blur-sm">
         <div className="flex items-center justify-between sm:justify-start min-w-0">
           <button
@@ -530,10 +505,10 @@ export default function App() {
               setActiveQuery('');
               setQuery('');
               setEntityResults([]);
-                              setSelectedDocId(null);
-                              setSelectedTurnIndex(null);
-                              setHighlightedEvidenceIndex(null);
-                              setIntroPhase('intro');
+              setSelectedDocId(null);
+              setSelectedTurnIndex(null);
+              setHighlightedEvidenceIndex(null);
+              setIntroPhase('intro');
               setMode('chat');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
@@ -545,55 +520,9 @@ export default function App() {
               The Archive
             </h1>
           </button>
-          <div className="flex items-center gap-2 sm:hidden">
-            {user ? (
-              <button
-                type="button"
-                onClick={() => signOut()}
-                className="flex items-center justify-center p-2.5 rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors min-h-[44px] min-w-[44px]"
-                aria-label="Log out"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowAuthModal(true)}
-                className="px-4 py-2.5 rounded-md text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors min-h-[44px]"
-              >
-                Sign in
-              </button>
-            )}
-          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
-          {user && (
-            <div className="hidden sm:flex items-center gap-3 text-sm">
-              <span className="text-zinc-400 font-mono truncate max-w-[180px]" title={user.email ?? undefined}>
-                {user.email}
-              </span>
-              <button
-                type="button"
-                onClick={() => signOut()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors min-h-[44px]"
-              >
-                <LogOut className="w-4 h-4" />
-                Log out
-              </button>
-            </div>
-          )}
-          {!user && (
-            <div className="hidden sm:block">
-              <button
-                type="button"
-                onClick={() => setShowAuthModal(true)}
-                className="px-4 py-2 rounded-md text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors min-h-[44px]"
-              >
-                Sign in
-              </button>
-            </div>
-          )}
           <div className="flex bg-zinc-900/80 p-1 rounded-lg border border-zinc-800 overflow-x-auto scrollbar-hide">
             <button
               onClick={() => setMode('chat')}
@@ -606,13 +535,7 @@ export default function App() {
               <span className="hidden sm:inline">Synthesize</span>
             </button>
             <button
-              onClick={() => {
-                if (!user) {
-                  setShowAuthModal(true);
-                  return;
-                }
-                setMode('search');
-              }}
+              onClick={() => setMode('search')}
               className={`flex items-center shrink-0 px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-sm font-medium transition-all min-h-[44px] sm:min-h-0 ${
                 mode === 'search' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
               }`}
@@ -622,13 +545,7 @@ export default function App() {
               <span className="hidden sm:inline">Raw Search</span>
             </button>
             <button
-              onClick={() => {
-                if (!user) {
-                  setShowAuthModal(true);
-                  return;
-                }
-                setMode('graph');
-              }}
+              onClick={() => setMode('graph')}
               className={`flex items-center shrink-0 px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-sm font-medium transition-all min-h-[44px] sm:min-h-0 ${
                 mode === 'graph' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
               }`}
@@ -641,11 +558,9 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content Area — min-h-0 so flex children can scroll */}
       <main className="relative z-10 flex-1 min-h-0 flex flex-col overflow-hidden">
         {mode === 'graph' ? (
           <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
-            {/* Graph canvas */}
             <div className="flex-1 min-w-0 min-h-[300px] md:min-h-0 relative bg-zinc-950/80 border-b md:border-b-0 md:border-r border-zinc-800/50">
               {graphLoading ? (
                 <div className="absolute inset-0 flex items-center justify-center text-zinc-400 font-mono text-sm">
@@ -674,7 +589,6 @@ export default function App() {
                 </p>
               )}
             </div>
-            {/* Graph sidebar: stats, filters, selected node triples — stacks below graph on mobile */}
             <div className="w-full md:w-[400px] lg:w-[420px] min-h-0 shrink-0 flex flex-col bg-zinc-950/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-zinc-900 shadow-2xl z-20 overflow-hidden">
               <div className="shrink-0 p-4 border-b border-zinc-800/50 bg-zinc-900/50 space-y-4">
                 <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest">
@@ -829,8 +743,7 @@ export default function App() {
           </div>
         ) : (
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Session sidebar: chat mode only, when user is signed in */}
-          {mode === 'chat' && user && (
+          {mode === 'chat' && (
             <div className="hidden sm:flex w-56 lg:w-64 shrink-0 flex-col border-r border-zinc-800/50 bg-zinc-950/95 overflow-hidden">
               <div className="shrink-0 p-3 border-b border-zinc-800/50">
                 <button
@@ -925,18 +838,6 @@ export default function App() {
                 </div>
               </form>
 
-              {mode === 'chat' && !user && !authLoading && (
-                <div className="mt-4 flex items-center justify-center gap-3 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => setShowAuthModal(true)}
-                    className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 font-mono text-sm transition-colors"
-                  >
-                    Sign in
-                  </button>
-                </div>
-              )}
-
               <div className="mt-8 text-xs font-mono text-zinc-500">
                 <span>
                   INDEX: {stats?.document_count != null ? stats.document_count.toLocaleString() : '—'} DOCS
@@ -951,7 +852,6 @@ export default function App() {
               transition={{ duration: 0.4 }}
               className="flex-1 flex min-h-0 overflow-hidden"
             >
-              {/* Left Column: Synthesis / Thread — scrollable independently */}
               <div className="flex-1 min-w-0 min-h-0 flex flex-col border-r border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md relative">
                 <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 md:p-10 pb-24 sm:pb-28 scrollbar-visible">
                   <div className="max-w-3xl mx-auto">
@@ -1116,7 +1016,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Pinned Input */}
                 <div className="p-4 sm:p-6 pb-safe bg-gradient-to-t from-zinc-950 via-zinc-950 to-transparent absolute bottom-0 left-0 right-0">
                   <form onSubmit={handleSearch} className="max-w-3xl mx-auto relative">
                     <div className="glass-panel rounded-xl flex items-center p-1.5 focus-within:border-zinc-600 focus-within:bg-zinc-900">
@@ -1143,7 +1042,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Right Column: Evidence / Entity Panel — scrollable independently, stacks below chat on mobile */}
               <div className="w-full md:w-[400px] lg:w-[480px] min-h-[200px] md:min-h-0 shrink-0 flex flex-col bg-zinc-950/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-zinc-900 shadow-2xl z-20">
                 <div className="shrink-0 p-4 border-b border-zinc-800/50 bg-zinc-900/50">
                   <div className="flex items-center justify-between">
@@ -1231,7 +1129,6 @@ export default function App() {
         )}
       </main>
 
-      {/* Document modal */}
       <AnimatePresence>
         {selectedDocId && (
           <motion.div
@@ -1276,12 +1173,6 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-        onSignInWithGoogle={signInWithGoogle}
-      />
     </div>
   );
 }

@@ -10,7 +10,6 @@ export interface GetGraphParams {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-// Helper to simulate network delay for mocks
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Map backend sources to Evidence[] for EvidenceCard */
@@ -23,33 +22,9 @@ export function sourcesToEvidence(sources: Source[]): Evidence[] {
   }));
 }
 
-// Mock data for fallback when backend is unreachable
-const MOCK_EVIDENCE: Evidence[] = [
-  {
-    doc_id: 'EP-0492-B',
-    date: '2006-08-14',
-    source_ref: 'Flight Logs, pg. 42',
-    snippet:
-      "Passenger manifest indicates departure from Teterboro Airport en route to Palm Beach. Notable individuals listed include [REDACTED] and [REDACTED].",
-    score: 0.92,
-  },
-  {
-    doc_id: 'EP-1104-A',
-    date: '2008-02-21',
-    source_ref: 'Financial Records, Exhibit C',
-    snippet:
-      "Wire transfer of $250,000 authorized by J.E. to offshore account ending in 4491. Purpose listed as 'Consulting Services'.",
-    score: 0.85,
-  },
-  {
-    doc_id: 'EP-0881-C',
-    date: '2005-11-03',
-    source_ref: 'Visitor Logs, Zorro Ranch',
-    snippet:
-      'Entry logged at 14:30 MST. Vehicle plates match registered corporate fleet. Departure not recorded on same day.',
-    score: 0.78,
-  },
-];
+function deviceHeaders(deviceId: string): Record<string, string> {
+  return { 'X-Device-Id': deviceId };
+}
 
 export const api = {
   /** GET /api/entities — preset list of all entities (names + counts) for graph dropdown */
@@ -59,7 +34,7 @@ export const api = {
       if (!res.ok) throw new Error('Network response was not ok');
       const data = await res.json();
       return { results: Array.isArray(data) ? data : [] };
-    } catch (error) {
+    } catch {
       console.warn('Backend unreachable, using empty entity preset');
       await delay(400);
       return { results: [] };
@@ -75,28 +50,20 @@ export const api = {
       if (!res.ok) throw new Error('Network response was not ok');
       const data = await res.json();
       return { results: Array.isArray(data) ? data : [] };
-    } catch (error) {
+    } catch {
       console.warn('Backend unreachable, using empty entity search');
       await delay(400);
       return { results: [] };
     }
   },
 
-  /** GET /api/chat?q= — RAG chat; returns answer, sources, triples. Requires accessToken (JWT). Optional sessionId to persist turn. */
-  async chat(query: string, accessToken: string | null, sessionId?: string | null): Promise<ChatResponse> {
-    if (!accessToken) {
-      throw new Error('Sign in to ask a question.');
-    }
+  /** GET /api/chat?q= — RAG chat; returns answer, sources, triples. Requires deviceId (X-Device-Id). Optional sessionId to persist turn. */
+  async chat(query: string, deviceId: string, sessionId?: string | null): Promise<ChatResponse> {
     const params = new URLSearchParams({ q: query.trim() });
     if (sessionId) params.set('session_id', sessionId);
     const res = await fetch(`${API_BASE_URL}/api/chat?${params.toString()}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers: deviceHeaders(deviceId),
     });
-    if (res.status === 401) {
-      throw new Error('Session expired or invalid. Please sign in again.');
-    }
     if (!res.ok) throw new Error('Network response was not ok');
     const data = await res.json();
     return {
@@ -106,54 +73,46 @@ export const api = {
     };
   },
 
-  /** POST /api/sessions — create a new chat session. Requires accessToken. */
-  async createSession(accessToken: string | null, title?: string): Promise<ChatSession> {
-    if (!accessToken) throw new Error('Sign in to create a session.');
+  /** POST /api/sessions — create a new anonymous chat session. */
+  async createSession(deviceId: string, title?: string): Promise<ChatSession> {
     const res = await fetch(`${API_BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        ...deviceHeaders(deviceId),
       },
       body: JSON.stringify(title != null ? { title } : {}),
     });
-    if (res.status === 401) throw new Error('Session expired or invalid. Please sign in again.');
     if (!res.ok) throw new Error('Network response was not ok');
     return res.json();
   },
 
-  /** GET /api/sessions — list sessions for the current user. Requires accessToken. */
-  async getSessions(accessToken: string | null): Promise<ChatSession[]> {
-    if (!accessToken) return [];
+  /** GET /api/sessions — list anonymous sessions for this device. */
+  async getSessions(deviceId: string): Promise<ChatSession[]> {
     const res = await fetch(`${API_BASE_URL}/api/sessions`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: deviceHeaders(deviceId),
     });
-    if (res.status === 401) throw new Error('Session expired or invalid. Please sign in again.');
     if (!res.ok) return [];
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   },
 
-  /** GET /api/sessions/{id} — get one session and its messages. Requires accessToken. */
-  async getSession(sessionId: string, accessToken: string | null): Promise<{ session: ChatSession; messages: ChatMessage[] }> {
-    if (!accessToken) throw new Error('Sign in to load the session.');
+  /** GET /api/sessions/{id} — get one session and its messages. */
+  async getSession(sessionId: string, deviceId: string): Promise<{ session: ChatSession; messages: ChatMessage[] }> {
     const res = await fetch(`${API_BASE_URL}/api/sessions/${encodeURIComponent(sessionId)}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: deviceHeaders(deviceId),
     });
-    if (res.status === 401) throw new Error('Session expired or invalid. Please sign in again.');
     if (res.status === 404) throw new Error('Session not found.');
     if (!res.ok) throw new Error('Network response was not ok');
     return res.json();
   },
 
-  /** DELETE /api/sessions/{id} — delete a session and its messages. Requires accessToken. */
-  async deleteSession(sessionId: string, accessToken: string | null): Promise<void> {
-    if (!accessToken) throw new Error('Sign in to delete a session.');
+  /** DELETE /api/sessions/{id} — delete a session and its messages. */
+  async deleteSession(sessionId: string, deviceId: string): Promise<void> {
     const res = await fetch(`${API_BASE_URL}/api/sessions/${encodeURIComponent(sessionId)}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: deviceHeaders(deviceId),
     });
-    if (res.status === 401) throw new Error('Session expired or invalid. Please sign in again.');
     if (res.status === 404) throw new Error('Session not found.');
     if (!res.ok) throw new Error('Network response was not ok');
   },

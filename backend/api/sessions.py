@@ -1,19 +1,20 @@
-# Session CRUD for chat persistence: POST/GET/DELETE /api/sessions, GET /api/sessions/{id}.
+# Session CRUD for anonymous chat persistence: POST/GET/DELETE /api/sessions, GET /api/sessions/{id}.
+# Keyed by device_id (X-Device-Id header) instead of JWT user_id.
 
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Any, Dict, List
-from uuid import UUID, uuid4
+from typing import Any, Dict
+from uuid import uuid4
 
 from pydantic import BaseModel
 
 from fastapi import APIRouter, Body, HTTPException, status
 from supabase import Client, create_client
 
-from api.auth import RequireAuth
+from api.auth import RequireDeviceId
 
 
 class CreateSessionBody(BaseModel):
@@ -58,19 +59,19 @@ router = APIRouter(tags=["sessions"])
 
 @router.post("/sessions")
 def create_session(
-    user_id: RequireAuth,
+    device_id: RequireDeviceId,
     body: CreateSessionBody | None = Body(None),
 ):
-    """Create a new chat session. Body optional: { "title": "New chat" }."""
+    """Create a new anonymous chat session. Body optional: { "title": "New chat" }."""
     title = (body.title if body else None) or "New chat"
     session_id = uuid4()
     now_iso = datetime.now(timezone.utc).isoformat()
     client = _create_supabase_client()
     try:
-        client.table("chat_sessions").insert(
+        client.table("chat_sessions_anonymous").insert(
             {
                 "id": str(session_id),
-                "user_id": str(user_id),
+                "device_id": device_id,
                 "title": title,
                 "created_at": now_iso,
                 "updated_at": now_iso,
@@ -93,16 +94,16 @@ def create_session(
 
 @router.get("/sessions")
 def list_sessions(
-    user_id: RequireAuth,
+    device_id: RequireDeviceId,
     limit: int = 50,
 ):
-    """List sessions for the authenticated user, most recently updated first."""
+    """List anonymous sessions for this device, most recently updated first."""
     client = _create_supabase_client()
     try:
         resp = (
-            client.table("chat_sessions")
+            client.table("chat_sessions_anonymous")
             .select("id, title, created_at, updated_at")
-            .eq("user_id", str(user_id))
+            .eq("device_id", device_id)
             .order("updated_at", desc=True)
             .limit(limit)
             .execute()
@@ -119,16 +120,16 @@ def list_sessions(
 @router.get("/sessions/{session_id}")
 def get_session(
     session_id: str,
-    user_id: RequireAuth,
+    device_id: RequireDeviceId,
 ):
-    """Get one session and its messages. 404 if not found or not owned by user."""
+    """Get one session and its messages. 404 if not found or not owned by device."""
     client = _create_supabase_client()
     try:
         sess_resp = (
-            client.table("chat_sessions")
+            client.table("chat_sessions_anonymous")
             .select("id, title, created_at, updated_at")
             .eq("id", session_id)
-            .eq("user_id", str(user_id))
+            .eq("device_id", device_id)
             .limit(1)
             .execute()
         )
@@ -144,7 +145,7 @@ def get_session(
 
     try:
         msg_resp = (
-            client.table("chat_messages")
+            client.table("chat_messages_anonymous")
             .select("role, content, sources, triples, created_at")
             .eq("session_id", session_id)
             .order("created_at")
@@ -162,16 +163,16 @@ def get_session(
 @router.delete("/sessions/{session_id}")
 def delete_session(
     session_id: str,
-    user_id: RequireAuth,
+    device_id: RequireDeviceId,
 ):
-    """Delete a session and its messages. 404 if not found or not owned by user."""
+    """Delete a session and its messages. 404 if not found or not owned by device."""
     client = _create_supabase_client()
     try:
         resp = (
-            client.table("chat_sessions")
+            client.table("chat_sessions_anonymous")
             .delete()
             .eq("id", session_id)
-            .eq("user_id", str(user_id))
+            .eq("device_id", device_id)
             .execute()
         )
     except Exception as e:
@@ -179,7 +180,6 @@ def delete_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete session",
         ) from e
-    # Supabase delete returns data with deleted rows; if empty, nothing was deleted
     if not (resp.data or resp.count):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     return {"ok": True}
