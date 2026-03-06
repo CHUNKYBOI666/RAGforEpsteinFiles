@@ -8,6 +8,7 @@ import { EvidenceCard } from './components/EvidenceCard';
 import { RelationshipGraph } from './components/RelationshipGraph';
 import { api, sourcesToEvidence } from './api';
 import { getDeviceId } from './lib/deviceId';
+import { Analytics } from '@vercel/analytics/react';
 import type { AppMode, ChatMessage, ChatSession, Evidence, EntitySearchResult, GraphEdge, GraphNode, StatsResponse, Triple } from './types';
 
 const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
@@ -1173,6 +1174,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      <Analytics />
     </div>
   );
 }
