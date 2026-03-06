@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 import { CitationPill } from './components/CitationPill';
 import { EvidenceCard } from './components/EvidenceCard';
 import { RelationshipGraph } from './components/RelationshipGraph';
@@ -1173,6 +1174,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      <Analytics />
     </div>
   );
 }
