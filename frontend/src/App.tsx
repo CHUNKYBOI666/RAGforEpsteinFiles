@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network, PanelLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network, PanelLeft, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import { CitationPill } from './components/CitationPill';
 import { EvidenceCard } from './components/EvidenceCard';
 import { RelationshipGraph } from './components/RelationshipGraph';
@@ -689,6 +689,16 @@ export default function App() {
               <span className="hidden sm:inline">Network</span>
             </button>
           </div>
+          <a
+            href="https://github.com/CHUNKYBOI666/RAGforEpsteinFiles"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center shrink-0 gap-2 px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-sm font-medium min-h-[44px] sm:min-h-0 text-amber-400/90 hover:text-amber-300 hover:bg-zinc-800/50 transition-colors border border-amber-500/30 hover:border-amber-500/50"
+            aria-label="Star this repo on GitHub"
+          >
+            <Star className="w-4 h-4" />
+            <span className="hidden sm:inline">Star this repo</span>
+          </a>
         </div>
       </header>
 
