@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network } from 'lucide-react';
+import { Search, MessageSquare, ArrowRight, Loader2, ShieldAlert, FileText, X, Network, PanelLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { CitationPill } from './components/CitationPill';
 import { EvidenceCard } from './components/EvidenceCard';
 import { RelationshipGraph } from './components/RelationshipGraph';
@@ -65,16 +65,34 @@ export default function App() {
   const [graphEntitySuggestions, setGraphEntitySuggestions] = useState<EntitySearchResult[]>([]);
   const [graphEntitySuggestionsOpen, setGraphEntitySuggestionsOpen] = useState(false);
   const graphEntityContainerRef = useRef<HTMLDivElement>(null);
+  const [graphSettingsOpen, setGraphSettingsOpen] = useState(true);
+  const [structuredFactsExpanded, setStructuredFactsExpanded] = useState(true);
 
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [documentText, setDocumentText] = useState<string | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
 
+  const [mobileChatDrawerOpen, setMobileChatDrawerOpen] = useState(false);
+  const [mobileEvidenceDrawerOpen, setMobileEvidenceDrawerOpen] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const evidencePanelScrollRef = useRef<HTMLDivElement>(null);
+  const evidenceSectionRef = useRef<HTMLDivElement>(null);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const outerScrollRef = useRef<HTMLDivElement>(null);
   const activeEvidenceCardRef = useRef<HTMLDivElement | null>(null);
+
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? !window.matchMedia('(min-width: 768px)').matches : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const handle = () => setIsMobile(!mq.matches);
+    mq.addEventListener('change', handle);
+    return () => mq.removeEventListener('change', handle);
+  }, []);
 
   type IntroPhase = 'intro' | 'fading' | 'done';
   const [introPhase, setIntroPhase] = useState<IntroPhase>('intro');
@@ -133,10 +151,13 @@ export default function App() {
   }, [introPhase]);
 
   useEffect(() => {
-    if (hasSearched) {
+    if (!hasSearched) return;
+    if (isMobile) {
+      outerScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [answer, evidence, triples, entityResults, hasSearched]);
+  }, [answer, evidence, triples, entityResults, hasSearched, isMobile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -468,6 +489,107 @@ export default function App() {
     );
   };
 
+  const renderEvidencePanelContent = (isDrawer: boolean) => (
+    <>
+      <div className="shrink-0 p-4 border-b border-zinc-800/50 bg-zinc-900/50">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest flex items-center min-w-0">
+            <FileText className="w-3.5 h-3.5 mr-2 shrink-0" />
+            {mode === 'chat' ? 'Source Evidence' : 'Entity matches'}
+          </h3>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-mono text-zinc-600">
+              {mode === 'chat' ? `${panelEvidence.length} files` : `${entityResults.length} names`}
+            </span>
+            {mode === 'chat' && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isDrawer) {
+                    setMobileEvidenceDrawerOpen(false);
+                  } else {
+                    outerScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }}
+                className="md:hidden min-h-[44px] min-w-[44px] px-3 py-2 rounded-lg text-xs font-mono text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-colors"
+                aria-label={isDrawer ? "Close evidence panel" : "Scroll back to answer"}
+              >
+                {isDrawer ? "Close" : "Back to answer"}
+              </button>
+            )}
+          </div>
+        </div>
+        {mode === 'chat' && panelQuery && (
+          <p className="mt-1.5 text-xs font-mono text-zinc-500 truncate" title={panelQuery}>
+            {panelQuery}
+          </p>
+        )}
+      </div>
+
+      <div
+        ref={isDrawer ? undefined : evidencePanelScrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4 scrollbar-visible"
+      >
+        {isSearching ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-32 rounded-lg bg-zinc-900/50 animate-pulse border border-zinc-800/30"
+             ></div>
+            ))}
+          </div>
+        ) : mode === 'chat' ? (
+          panelEvidence.length > 0 ? (
+            panelEvidence.map((item, idx) => (
+              <motion.div
+                key={`ev-${effectiveTurnIndex}-${item.doc_id}-${idx}`}
+                ref={idx === highlightedEvidenceIndex && !isDrawer ? activeEvidenceCardRef : undefined}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.1 }}
+              >
+                <EvidenceCard
+                  evidence={item}
+                  index={idx}
+                  isActive={highlightedEvidenceIndex === idx}
+                  onClick={(doc_id) => {
+                    if (isDrawer) setMobileEvidenceDrawerOpen(false);
+                    setHighlightedEvidenceIndex(null);
+                    setSelectedDocId(doc_id);
+                  }}
+                />
+              </motion.div>
+            ))
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-zinc-600 font-mono text-sm">
+              <FileText className="w-8 h-8 mb-3 opacity-20" />
+              <p>No evidence loaded.</p>
+            </div>
+          )
+        ) : entityResults.length > 0 ? (
+          <ul className="space-y-2">
+            {entityResults.map((r, i) => (
+              <li
+                key={`${r.canonical_name}-${i}`}
+                className="flex items-center justify-between p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/50"
+              >
+                <span className="font-mono text-sm text-zinc-300">{r.canonical_name}</span>
+                <span className="text-xs font-mono text-zinc-500">{r.count} relations</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center text-zinc-600 font-mono text-sm">
+            <Search className="w-8 h-8 mb-3 opacity-20" />
+            <p>No entity matches.</p>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="relative h-screen min-h-0 bg-zinc-950 text-zinc-200 font-sans overflow-hidden flex flex-col">
       {(introPhase === 'intro' || introPhase === 'fading') && (
@@ -491,7 +613,18 @@ export default function App() {
       <div className="fixed inset-0 z-0 pointer-events-none bg-zinc-950/60" aria-hidden />
 
       <header className="sticky top-0 z-20 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 p-4 sm:p-6 border-b border-zinc-800/50 bg-zinc-950/50 backdrop-blur-sm">
-        <div className="flex items-center justify-between sm:justify-start min-w-0">
+        <div className="flex items-center justify-between sm:justify-start min-w-0 gap-2">
+          {mode === 'chat' && (
+            <button
+              type="button"
+              onClick={() => setMobileChatDrawerOpen(true)}
+              className="sm:hidden flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] rounded-md text-zinc-300 hover:text-white hover:bg-zinc-800/50 transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-zinc-950 p-2"
+              aria-label="Open chat list"
+            >
+              <PanelLeft className="w-5 h-5 shrink-0" aria-hidden />
+              <span className="font-mono text-sm">Chats</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -559,6 +692,101 @@ export default function App() {
         </div>
       </header>
 
+      <AnimatePresence>
+        {mode === 'chat' && mobileChatDrawerOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm sm:hidden"
+              onClick={() => setMobileChatDrawerOpen(false)}
+              aria-hidden
+            />
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'tween', duration: 0.25 }}
+              className="fixed left-0 top-0 bottom-0 z-50 w-72 max-w-[85vw] flex flex-col border-r border-zinc-800/50 bg-zinc-950/95 shadow-2xl sm:hidden"
+              role="dialog"
+              aria-label="Chat list"
+            >
+              <div className="shrink-0 flex items-center justify-between p-3 border-b border-zinc-800/50">
+                <span className="font-mono text-sm font-semibold text-zinc-300">Chats</span>
+                <button
+                  type="button"
+                  onClick={() => setMobileChatDrawerOpen(false)}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  aria-label="Close chat list"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="shrink-0 p-3 border-b border-zinc-800/50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleNewChat();
+                    setMobileChatDrawerOpen(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 min-h-[44px] py-2.5 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 font-mono text-sm transition-colors"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  New chat
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-2">
+                {sessionsLoading ? (
+                  <div className="flex items-center justify-center py-4 text-zinc-500 font-mono text-xs">
+                    Loading...
+                  </div>
+                ) : sessions.length === 0 ? (
+                  <p className="text-zinc-500 font-mono text-xs px-2 py-4">No past chats</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {sessions.map((s) => (
+                      <li key={s.id}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={async () => {
+                            await handleSelectSession(s.id);
+                            setMobileChatDrawerOpen(false);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleSelectSession(s.id).then(() => setMobileChatDrawerOpen(false));
+                            }
+                          }}
+                          className={`group flex items-start gap-2 rounded-lg px-3 py-3 text-left cursor-pointer transition-colors min-h-[44px] ${
+                            currentSessionId === s.id ? 'bg-zinc-800 text-zinc-100' : 'hover:bg-zinc-800/60 text-zinc-300'
+                          }`}
+                        >
+                          <span className="flex-1 min-w-0 truncate text-sm font-mono" title={s.title ?? undefined}>
+                            {s.title || 'New chat'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSession(s.id, e)}
+                            className="shrink-0 p-2 rounded min-h-[44px] min-w-[44px] flex items-center justify-center text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label="Delete chat"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <main className="relative z-10 flex-1 min-h-0 flex flex-col overflow-hidden">
         {mode === 'graph' ? (
           <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
@@ -590,11 +818,35 @@ export default function App() {
                 </p>
               )}
             </div>
-            <div className="w-full md:w-[400px] lg:w-[420px] min-h-0 shrink-0 flex flex-col bg-zinc-950/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-zinc-900 shadow-2xl z-20 overflow-hidden">
-              <div className="shrink-0 p-4 border-b border-zinc-800/50 bg-zinc-900/50 space-y-4">
-                <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest">
-                  Graph settings
-                </h3>
+            <div className="w-full md:w-[400px] lg:w-[420px] min-h-0 flex-1 md:flex-none md:shrink-0 flex flex-col bg-zinc-950/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-zinc-900 shadow-2xl z-20 overflow-hidden">
+              <div className="shrink-0 border-b border-zinc-800/50 bg-zinc-900/50">
+                <button
+                  type="button"
+                  onClick={() => setGraphSettingsOpen((o) => !o)}
+                  className="w-full flex items-center justify-between gap-2 p-4 min-h-[44px] text-left hover:bg-zinc-800/50 active:bg-zinc-800 transition-colors"
+                  aria-expanded={graphSettingsOpen}
+                  aria-controls="graph-settings-content"
+                >
+                  <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest">
+                    Graph settings
+                  </h3>
+                  {graphSettingsOpen ? (
+                    <ChevronUp className="w-4 h-4 shrink-0 text-zinc-500" aria-hidden />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 shrink-0 text-zinc-500" aria-hidden />
+                  )}
+                </button>
+                <AnimatePresence initial={false}>
+                  {graphSettingsOpen && (
+                    <motion.div
+                      id="graph-settings-content"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-4 pb-4 space-y-4">
                 {stats && (
                   <div className="grid grid-cols-2 gap-2 text-xs font-mono text-zinc-500">
                     <span>Documents</span>
@@ -694,51 +946,86 @@ export default function App() {
                     {graphLoading ? 'Loading...' : 'Go'}
                   </button>
                 </form>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto p-4">
-                <h4 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-                  {selectedGraphNodeId ? 'Structured facts' : 'Select a node'}
-                </h4>
-                {selectedGraphNodeId && (
-                  <ul className="space-y-3">
-                    {graphEdges
-                      .filter((e) => e.source === selectedGraphNodeId || e.target === selectedGraphNodeId)
-                      .map((edge, i) => (
-                        <li
-                          key={`${edge.source}-${edge.target}-${edge.action}-${i}`}
-                          className="text-sm text-zinc-400 font-mono border-l-2 border-zinc-700 pl-3 py-1"
-                        >
-                          <span className="text-zinc-300">{edge.source}</span>
-                          {' — '}
-                          {edge.action}
-                          {edge.target && (
-                            <>
-                              {' → '}
-                              <span className="text-zinc-300">{edge.target}</span>
-                            </>
-                          )}
-                          {edge.timestamp && (
-                            <span className="text-zinc-500 ml-2">({edge.timestamp})</span>
-                          )}
-                          {edge.location && (
-                            <span className="text-zinc-500 ml-2">@ {edge.location}</span>
-                          )}
-                          {edge.doc_id && (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedDocId(edge.doc_id)}
-                              className="ml-2 text-xs text-zinc-500 hover:text-zinc-300 underline"
-                            >
-                              View doc
-                            </button>
-                          )}
-                        </li>
-                      ))}
-                  </ul>
-                )}
-                {selectedGraphNodeId && graphEdges.filter((e) => e.source === selectedGraphNodeId || e.target === selectedGraphNodeId).length === 0 && (
-                  <p className="text-zinc-500 text-sm">No triples in this view for this node.</p>
-                )}
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setStructuredFactsExpanded((e) => !e)}
+                  className="shrink-0 flex items-center justify-between gap-2 p-4 min-h-[44px] text-left hover:bg-zinc-800/30 active:bg-zinc-800/50 transition-colors border-b border-zinc-800/50"
+                  aria-expanded={structuredFactsExpanded}
+                  aria-controls="structured-facts-content"
+                >
+                  <h4 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest">
+                    {selectedGraphNodeId ? 'Structured facts' : 'Select a node'}
+                  </h4>
+                  {structuredFactsExpanded ? (
+                    <ChevronUp className="w-4 h-4 shrink-0 text-zinc-500" aria-hidden />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 shrink-0 text-zinc-500" aria-hidden />
+                  )}
+                </button>
+                <AnimatePresence initial={false}>
+                  {structuredFactsExpanded && (
+                    <motion.div
+                      id="structured-facts-content"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex-1 min-h-0 overflow-hidden flex flex-col"
+                    >
+                      <div
+                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 scrollbar-visible overscroll-contain"
+                        style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                      >
+                        {selectedGraphNodeId && (
+                          <ul className="space-y-3">
+                            {graphEdges
+                              .filter((e) => e.source === selectedGraphNodeId || e.target === selectedGraphNodeId)
+                              .map((edge, i) => (
+                                <li
+                                  key={`${edge.source}-${edge.target}-${edge.action}-${i}`}
+                                  className="text-sm text-zinc-400 font-mono border-l-2 border-zinc-700 pl-3 py-1"
+                                >
+                                  <span className="text-zinc-300">{edge.source}</span>
+                                  {' — '}
+                                  {edge.action}
+                                  {edge.target && (
+                                    <>
+                                      {' → '}
+                                      <span className="text-zinc-300">{edge.target}</span>
+                                    </>
+                                  )}
+                                  {edge.timestamp && (
+                                    <span className="text-zinc-500 ml-2">({edge.timestamp})</span>
+                                  )}
+                                  {edge.location && (
+                                    <span className="text-zinc-500 ml-2">@ {edge.location}</span>
+                                  )}
+                                  {edge.doc_id && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedDocId(edge.doc_id)}
+                                      className="ml-2 text-xs text-zinc-500 hover:text-zinc-300 underline"
+                                    >
+                                      View doc
+                                    </button>
+                                  )}
+                                </li>
+                              ))}
+                          </ul>
+                        )}
+                        {selectedGraphNodeId && graphEdges.filter((e) => e.source === selectedGraphNodeId || e.target === selectedGraphNodeId).length === 0 && (
+                          <p className="text-zinc-500 text-sm">No triples in this view for this node.</p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </div>
@@ -795,7 +1082,10 @@ export default function App() {
               </div>
             </div>
           )}
-        <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden min-w-0">
+        <div
+          ref={outerScrollRef}
+          className="flex flex-col md:flex-row flex-1 min-h-0 overflow-y-auto md:overflow-hidden min-w-0"
+        >
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
         <AnimatePresence mode="wait">
           {((mode === 'chat' && chatMessages.length === 0) || (mode !== 'chat' && !hasSearched)) ? (
@@ -854,7 +1144,10 @@ export default function App() {
               className="flex-1 flex min-h-0 overflow-hidden"
             >
               <div className="flex-1 min-w-0 min-h-0 flex flex-col border-r border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md relative">
-                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 md:p-10 pb-24 sm:pb-28 scrollbar-visible">
+                <div
+                  ref={contentScrollRef}
+                  className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 md:p-10 pb-24 sm:pb-28 scrollbar-visible"
+                >
                   <div className="max-w-3xl mx-auto">
                     {mode === 'chat' && chatMessages.length > 0 ? (
                       <>
@@ -892,6 +1185,7 @@ export default function App() {
                                         onCitationClick: (index) => {
                                           setSelectedTurnIndex(idx);
                                           setHighlightedEvidenceIndex(index);
+                                          if (isMobile) setMobileEvidenceDrawerOpen(true);
                                         },
                                         isSelectedTurn: effectiveTurnIndex === idx,
                                         highlightedEvidenceIndex,
@@ -930,6 +1224,17 @@ export default function App() {
                             </div>
                           ))}
                         </div>
+                        {mode === 'chat' && panelEvidence.length > 0 && (
+                          <div className="md:hidden mt-4 mb-2">
+                            <button
+                              type="button"
+                              onClick={() => setMobileEvidenceDrawerOpen(true)}
+                              className="min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-mono text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-zinc-800/50 transition-colors"
+                            >
+                              View source evidence
+                            </button>
+                          </div>
+                        )}
                         {isSearching && (
                           <div className="flex items-center space-x-3 text-zinc-400 font-mono text-sm animate-pulse mb-6">
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -961,7 +1266,10 @@ export default function App() {
                                   {answer ? (
                                     renderAnswerWithCitations(answer, {
                                       evidence,
-                                      onCitationClick: (index) => setHighlightedEvidenceIndex(index),
+                                      onCitationClick: (index) => {
+                                        setHighlightedEvidenceIndex(index);
+                                        if (isMobile) setMobileEvidenceDrawerOpen(true);
+                                      },
                                       isSelectedTurn: true,
                                       highlightedEvidenceIndex,
                                     })
@@ -1000,6 +1308,17 @@ export default function App() {
                                         </li>
                                       ))}
                                     </ul>
+                                  </div>
+                                )}
+                                {panelEvidence.length > 0 && (
+                                  <div className="md:hidden mt-6">
+                                    <button
+                                      type="button"
+                                      onClick={() => setMobileEvidenceDrawerOpen(true)}
+                                      className="min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-mono text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-zinc-800/50 transition-colors"
+                                    >
+                                      View source evidence
+                                    </button>
                                   </div>
                                 )}
                               </>
@@ -1043,84 +1362,15 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="w-full md:w-[400px] lg:w-[480px] min-h-[200px] md:min-h-0 shrink-0 flex flex-col bg-zinc-950/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-zinc-900 shadow-2xl z-20">
-                <div className="shrink-0 p-4 border-b border-zinc-800/50 bg-zinc-900/50">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-mono text-xs font-semibold text-zinc-400 uppercase tracking-widest flex items-center">
-                      <FileText className="w-3.5 h-3.5 mr-2" />
-                      {mode === 'chat' ? 'Source Evidence' : 'Entity matches'}
-                    </h3>
-                    <span className="text-xs font-mono text-zinc-600">
-                      {mode === 'chat' ? `${panelEvidence.length} files` : `${entityResults.length} names`}
-                    </span>
-                  </div>
-                  {mode === 'chat' && panelQuery && (
-                    <p className="mt-1.5 text-xs font-mono text-zinc-500 truncate" title={panelQuery}>
-                      {panelQuery}
-                    </p>
-                  )}
-                </div>
-
+              {!isMobile && (
                 <div
-                  ref={evidencePanelScrollRef}
-                  className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4 scrollbar-visible"
+                  id="source-evidence"
+                  ref={evidenceSectionRef}
+                  className="w-full md:w-[400px] lg:w-[480px] min-h-[200px] md:min-h-0 shrink-0 flex flex-col bg-zinc-950/90 backdrop-blur-xl border-t md:border-t-0 md:border-l border-zinc-900 shadow-2xl z-20"
                 >
-                  {isSearching ? (
-                    <div className="space-y-4">
-                      {[1, 2, 3].map((i) => (
-                        <div
-                          key={i}
-                          className="h-32 rounded-lg bg-zinc-900/50 animate-pulse border border-zinc-800/30"
-                       ></div>
-                      ))}
-                    </div>
-                  ) : mode === 'chat' ? (
-                    panelEvidence.length > 0 ? (
-                      panelEvidence.map((item, idx) => (
-                        <motion.div
-                          key={`ev-${effectiveTurnIndex}-${item.doc_id}-${idx}`}
-                          ref={idx === highlightedEvidenceIndex ? activeEvidenceCardRef : undefined}
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.1 }}
-                        >
-                          <EvidenceCard
-                            evidence={item}
-                            index={idx}
-                            isActive={highlightedEvidenceIndex === idx}
-                            onClick={(doc_id) => {
-                              setHighlightedEvidenceIndex(null);
-                              setSelectedDocId(doc_id);
-                            }}
-                          />
-                        </motion.div>
-                      ))
-                    ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-zinc-600 font-mono text-sm">
-                        <FileText className="w-8 h-8 mb-3 opacity-20" />
-                        <p>No evidence loaded.</p>
-                      </div>
-                    )
-                  ) : entityResults.length > 0 ? (
-                    <ul className="space-y-2">
-                      {entityResults.map((r, i) => (
-                        <li
-                          key={`${r.canonical_name}-${i}`}
-                          className="flex items-center justify-between p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/50"
-                        >
-                          <span className="font-mono text-sm text-zinc-300">{r.canonical_name}</span>
-                          <span className="text-xs font-mono text-zinc-500">{r.count} relations</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-zinc-600 font-mono text-sm">
-                      <Search className="w-8 h-8 mb-3 opacity-20" />
-                      <p>No entity matches.</p>
-                    </div>
-                  )}
+                  {renderEvidencePanelContent(false)}
                 </div>
-              </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -1129,6 +1379,33 @@ export default function App() {
         </div>
         )}
       </main>
+
+      <AnimatePresence>
+        {isMobile && mobileEvidenceDrawerOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm sm:hidden"
+              onClick={() => setMobileEvidenceDrawerOpen(false)}
+              aria-hidden
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'tween', duration: 0.25 }}
+              className="fixed left-0 right-0 bottom-0 z-50 h-[85vh] flex flex-col border-t border-zinc-800/50 bg-zinc-950/95 shadow-2xl rounded-t-2xl sm:hidden"
+              role="dialog"
+              aria-label="Source Evidence"
+            >
+              {renderEvidencePanelContent(true)}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {selectedDocId && (

@@ -34,7 +34,7 @@ export const CitationPill: React.FC<CitationPillProps> = ({
             }
           : undefined
       }
-      className={`inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-md text-xs font-medium align-middle whitespace-nowrap transition-colors ${
+      className={`inline-flex items-center gap-1 mx-1 px-3 py-2 sm:px-2 sm:py-0.5 rounded-md text-xs font-medium align-middle whitespace-nowrap transition-colors touch-manipulation ${
         isHighlighted
           ? 'bg-zinc-600 text-zinc-100 ring-1 ring-zinc-500'
           : 'bg-zinc-700/80 text-zinc-300 hover:bg-zinc-600/90'
