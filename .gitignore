@@ -2,6 +2,7 @@
 *.zip
 .DS_Store
 LearningExperience.md
+CLAUDE.md
 
 # Backend
 backend/.venv/

@@ -204,10 +204,16 @@ def api_chat(
     if session_id and not _verify_session_owner(session_id, device_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
+    from guardrails.input_guard import check_input
+    from guardrails.output_guard import check_output
+
+    check_input(q)
     result = run_chat_pipeline(q)
     doc_ids = [s.get("doc_id") for s in result["sources"] if s.get("doc_id")]
     if doc_ids:
         result["sources"] = get_metadata_for_doc_ids(doc_ids)
+
+    check_output(result["answer"], bool(result.get("sources")))
 
     if session_id:
         _persist_turn(session_id, q.strip(), result)

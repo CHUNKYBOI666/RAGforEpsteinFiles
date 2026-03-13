@@ -688,17 +688,17 @@ export default function App() {
               <Network className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Network</span>
             </button>
+            <a
+              href="https://github.com/CHUNKYBOI666/RAGforEpsteinFiles"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center shrink-0 gap-1.5 px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-sm font-medium min-h-[44px] sm:min-h-0 text-amber-400/90 hover:text-amber-300 hover:bg-zinc-800/50 transition-colors border border-amber-500/30 hover:border-amber-500/50 ml-1"
+              aria-label="Star this repo on GitHub"
+            >
+              <Star className="w-4 h-4" />
+              <span className="hidden sm:inline">Star this repo</span>
+            </a>
           </div>
-          <a
-            href="https://github.com/CHUNKYBOI666/RAGforEpsteinFiles"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center shrink-0 gap-2 px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-sm font-medium min-h-[44px] sm:min-h-0 text-amber-400/90 hover:text-amber-300 hover:bg-zinc-800/50 transition-colors border border-amber-500/30 hover:border-amber-500/50"
-            aria-label="Star this repo on GitHub"
-          >
-            <Star className="w-4 h-4" />
-            <span className="hidden sm:inline">Star this repo</span>
-          </a>
         </div>
       </header>
 
