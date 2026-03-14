@@ -11,9 +11,9 @@ RAG for EFN is a conversational research tool with semantic search over a docume
 ### Backend
 ```bash
 cd backend
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 cp .env.example .env        # then fill in credentials
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend
@@ -94,7 +94,7 @@ Optional tuning vars: `CHUNK_SIZE` (400), `CHUNK_OVERLAP` (50), `SUMMARY_TOP_K` 
 If re-ingesting data:
 1. Run `backend/ingestion/schema.sql` in Supabase SQL Editor
 2. Run `backend/ingestion/rpc_triple_candidate_doc_ids.sql`
-3. `python ingestion/migrate_sqlite.py` — SQLite → Supabase
-4. `python ingestion/chunk_documents.py` — split full_text into chunks
-5. `python ingestion/embed_chunks.py` — generate OpenAI embeddings (~$1 cost)
-6. `python ingestion/create_indexes.py` — create IVFFlat indexes
+3. `python3 ingestion/migrate_sqlite.py` — SQLite → Supabase
+4. `python3 ingestion/chunk_documents.py` — split full_text into chunks
+5. `python3 ingestion/embed_chunks.py` — generate OpenAI embeddings (~$1 cost)
+6. `python3 ingestion/create_indexes.py` — create IVFFlat indexes

@@ -7,7 +7,7 @@ https://github.com/user-attachments/assets/a3f3e005-8502-4dce-aca5-b7402c0ec927
 
 Ask questions on the Epstein Files and get answers with direct citations to source documents.
 
-[try here](rag-for-epstein-files.vercel.app)
+[try here](https://rag-for-epstein-files.vercel.app)
 
 ---
 
