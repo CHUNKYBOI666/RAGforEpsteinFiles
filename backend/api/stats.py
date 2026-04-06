@@ -37,19 +37,24 @@ def get_stats() -> Dict[str, int]:
     """Return document count, triple count, chunk count, distinct actor count."""
     client = _create_supabase_client()
     try:
+        # Use limit(1) instead of head=True: HEAD+count can yield empty bodies that break
+        # postgrest-py JSON parsing (and some proxies return non-JSON errors for HEAD).
         r_docs = (
             client.table("documents")
-            .select("doc_id", count="exact", head=True)
+            .select("doc_id", count="exact")
+            .limit(1)
             .execute()
         )
         r_triples = (
             client.table("rdf_triples")
-            .select("id", count="exact", head=True)
+            .select("id", count="exact")
+            .limit(1)
             .execute()
         )
         r_chunks = (
             client.table("chunks")
-            .select("id", count="exact", head=True)
+            .select("id", count="exact")
+            .limit(1)
             .execute()
         )
     except Exception as exc:

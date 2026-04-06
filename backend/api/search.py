@@ -35,14 +35,16 @@ def _count_entity_triples(client: Client, name: str) -> int:
     try:
         r_actor = (
             client.table("rdf_triples")
-            .select("*", count="exact", head=True)
+            .select("id", count="exact")
             .eq("actor", name)
+            .limit(1)
             .execute()
         )
         r_target = (
             client.table("rdf_triples")
-            .select("*", count="exact", head=True)
+            .select("id", count="exact")
             .eq("target", name)
+            .limit(1)
             .execute()
         )
     except Exception as exc:
