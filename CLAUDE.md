@@ -60,8 +60,13 @@ Runs sequentially — do not skip or reorder stages:
 | `GET /api/search?q=QUERY` | Entity/actor search |
 | `GET /api/entities` | All entities for graph dropdown |
 | `GET /api/graph` | Force-graph data (nodes + edges) with optional filters |
-| `GET/POST /api/stats` | DB counts |
-| `GET/POST/DELETE /api/sessions` | Device-based chat sessions |
+| `GET /api/stats` | DB counts (docs, triples, chunks, distinct actors) |
+| `GET /api/tag-clusters` | Top 30 semantic tag clusters from `rdf_triples.top_cluster_ids` |
+| `POST /api/sessions` | Create session |
+| `GET /api/sessions` | List sessions for device |
+| `GET /api/sessions/{session_id}` | Get single session |
+| `DELETE /api/sessions/{session_id}` | Delete session |
+| `GET /health` | Health check |
 
 Chat response contract (always return all fields, empty arrays if missing):
 ```json
@@ -72,6 +77,7 @@ Chat response contract (always return all fields, empty arrays if missing):
 - **`App.tsx`** — Main component; 3 modes: chat (Synthesize), search (Raw), graph (Network)
 - **`api.ts`** — All API calls; maps backend responses to UI types
 - **`types.ts`** — TypeScript interfaces (`ChatResponse`, `Source`, `Triple`, `GraphNode`, etc.)
+- **`components/CitationPill.tsx`** — Inline citation badges in chat answers
 - **`components/EvidenceCard.tsx`** — Source document cards with click-to-modal
 - **`components/RelationshipGraph.tsx`** — `react-force-graph-2d` visualization
 - **`lib/deviceId.ts`** — Stable device UUID in localStorage (used for session auth via `X-Device-Id` header)
@@ -83,7 +89,11 @@ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET
 OPENAI_API_KEY
 LLM_BASE_URL, LLM_MODEL, LLM_API_KEY
 ```
-Optional tuning vars: `CHUNK_SIZE` (400), `CHUNK_OVERLAP` (50), `SUMMARY_TOP_K` (20), `MAX_CANDIDATE_DOCS` (40), `CHUNK_TOP_K` (5).
+Optional vars:
+- `SUPABASE_DB_URL` — direct Postgres URL; used as fallback for `COUNT(DISTINCT actor)` when RPC is unavailable
+- `OPENAI_EMBED_MODEL` (default: `text-embedding-3-small`)
+- `CHUNK_SIZE` (400), `CHUNK_OVERLAP` (50)
+- `SUMMARY_TOP_K` (20), `TRIPLE_CANDIDATE_TOP_K` (25), `MAX_CANDIDATE_DOCS` (40), `CHUNK_TOP_K` (5)
 
 ## Constraints
 - Backend is Python/FastAPI only — no Node.js for the RAG API
@@ -93,7 +103,7 @@ Optional tuning vars: `CHUNK_SIZE` (400), `CHUNK_OVERLAP` (50), `SUMMARY_TOP_K` 
 ## One-Time Data Ingestion (already completed)
 If re-ingesting data:
 1. Run `backend/ingestion/schema.sql` in Supabase SQL Editor
-2. Run `backend/ingestion/rpc_triple_candidate_doc_ids.sql`
+2. Run `backend/ingestion/rpc_triple_candidate_doc_ids.sql` and `backend/ingestion/rpc_count_distinct_rdf_actors.sql`
 3. `python3 ingestion/migrate_sqlite.py` — SQLite → Supabase
 4. `python3 ingestion/chunk_documents.py` — split full_text into chunks
 5. `python3 ingestion/embed_chunks.py` — generate OpenAI embeddings (~$1 cost)

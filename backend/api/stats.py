@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import re
 from collections import Counter
 from pathlib import Path
@@ -27,6 +28,9 @@ _spec.loader.exec_module(_env_config)
 
 SUPABASE_URL: str = getattr(_env_config, "SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY: str = getattr(_env_config, "SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_DB_URL: str = getattr(_env_config, "SUPABASE_DB_URL", "") or ""
+
+_log = logging.getLogger(__name__)
 
 
 def _create_supabase_client() -> Client:
@@ -62,8 +66,8 @@ def get_stats() -> Dict[str, int]:
     doc_count = getattr(r_docs, "count", None) or 0
     triple_count = getattr(r_triples, "count", None) or 0
     chunk_count = getattr(r_chunks, "count", None) or 0
-    # Distinct actor count: we need a separate query (Supabase has no COUNT DISTINCT in simple select)
-    # Fetch distinct actors by paginating or use RPC. Simple approach: fetch in chunks and count unique.
+    # Distinct actors: must be one SQL round-trip (RPC or direct Postgres). Paginating `actor` via REST
+    # issues one API call per 1k rows and burns Supabase quota fast in production.
     actor_count = _get_distinct_actor_count(client)
     return {
         "document_count": doc_count,
@@ -73,33 +77,60 @@ def get_stats() -> Dict[str, int]:
     }
 
 
+def _rpc_scalar_to_int(raw: Any) -> int | None:
+    """Normalize PostgREST RPC payload for a single bigint/scalar."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return int(raw)
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    if isinstance(raw, str) and raw.strip().lstrip("-").isdigit():
+        return int(raw.strip())
+    if isinstance(raw, list) and len(raw) > 0:
+        return _rpc_scalar_to_int(raw[0])
+    if isinstance(raw, dict):
+        for k in ("count", "count_distinct_rdf_actors", "result"):
+            if k in raw and raw[k] is not None:
+                return _rpc_scalar_to_int(raw[k])
+    return None
+
+
 def _get_distinct_actor_count(client: Client) -> int:
-    """Count distinct non-null, non-empty actor values in rdf_triples."""
-    seen: set[str] = set()
-    page_size = 1000
-    offset = 0
-    while True:
+    """Count distinct non-null, non-empty `actor` in rdf_triples (single query)."""
+    try:
+        resp = client.rpc("count_distinct_rdf_actors").execute()
+        n = _rpc_scalar_to_int(resp.data)
+        if n is not None:
+            return max(0, n)
+    except Exception as exc:
+        _log.warning("count_distinct_rdf_actors RPC failed: %s", exc)
+
+    db_url = SUPABASE_DB_URL.strip()
+    if db_url:
         try:
-            resp = (
-                client.table("rdf_triples")
-                .select("actor")
-                .not_.is_("actor", "null")
-                .range(offset, offset + page_size - 1)
-                .execute()
-            )
+            import psycopg
+
+            with psycopg.connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT COUNT(DISTINCT TRIM(actor))::bigint
+                        FROM rdf_triples
+                        WHERE actor IS NOT NULL AND TRIM(actor) <> ''
+                        """
+                    )
+                    row = cur.fetchone()
+                    if row and row[0] is not None:
+                        return int(row[0])
         except Exception as exc:
-            raise RuntimeError("Failed to query rdf_triples for actor count") from exc
-        rows = resp.data or []
-        if not rows:
-            break
-        for r in rows:
-            a = r.get("actor")
-            if a is not None and str(a).strip():
-                seen.add(str(a).strip())
-        if len(rows) < page_size:
-            break
-        offset += page_size
-    return len(seen)
+            _log.warning("distinct actor count via SUPABASE_DB_URL failed: %s", exc)
+
+    _log.warning(
+        "actor_count unavailable: run backend/ingestion/rpc_count_distinct_rdf_actors.sql in Supabase "
+        "or set SUPABASE_DB_URL; returning 0"
+    )
+    return 0
 
 
 def _parse_cluster_ids(raw: Any) -> List[str]:

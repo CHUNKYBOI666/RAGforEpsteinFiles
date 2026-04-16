@@ -612,6 +612,10 @@ export default function App() {
       />
       <div className="fixed inset-0 z-0 pointer-events-none bg-zinc-950/60" aria-hidden />
 
+      <div className="relative z-20 w-full bg-amber-950/80 border-b border-amber-700/50 px-4 py-2 text-center text-amber-300 text-sm font-mono">
+        Status: Supabase free tier usage reached. That's why not working rn.
+      </div>
+
       <header className="sticky top-0 z-20 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 p-4 sm:p-6 border-b border-zinc-800/50 bg-zinc-950/50 backdrop-blur-sm">
         <div className="flex items-center justify-between sm:justify-start min-w-0 gap-2">
           {mode === 'chat' && (
